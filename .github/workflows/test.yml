@@ -1,28 +1,30 @@
-name: proofuck-aot-test
+name: proofuck-transpiler-test
 on: [push, pull_request]
 jobs:
-  test-aot:
+  test-transpiler:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate AOT Compiler PRF
+    - name: Generate C-Transpiler PRF
       run: |
-        python -c "b=',[>+>>+>>+>>+<<<<<<<-]>' + '-'*43 + '>+<[>[-]<[-]]>[[-]<'+'+'*65+'.[-]>]<<>>>' + '-'*45 + '>+<[>[-]<[-]]>[[-]<'+'+'*83+'.[-]>]<<<<>>>>>' + '-'*62 + '>+<[>[-]<[-]]>[[-]<'+'+'*82+'.[-]>]<<<<<<>>>>>>>' + '-'*60 + '>+<[>[-]<[-]]>[[-]<'+'+'*76+'.[-]>]<<<<<<<<'; print(b*4)" > aot.bf
-        python tools/reverse_generator.py "$(cat aot.bf)" > aot.prf
+        python -c "b=',[>+>>+>>+>>+<<<<<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..-.'+'+'*70+'.'+'-'*53+'.[-]>]<<>>>'+'-'*45+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..---.'+'+'*70+'.'+'-'*53+'.[-]>]<<<<>>>>>'+'-'*62+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..'+'+'*69+'.'+'-'*53+'.[-]>]<<<<<<>>>>>>>'+'-'*60+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..'+'+'*67+'.'+'-'*53+'.[-]>]<<<<<<<<'; print(b*4)" > transpiler.bf
+        python tools/reverse_generator.py "$(cat transpiler.bf)" > transpiler.prf
     - name: Run Tests
       run: |
         echo -n "+>-<" > input1.txt
-        RES1=$(python bootstrap/main.py aot.prf < input1.txt)
-        echo "Input: +>-<, Output: $RES1"
-        if [ "$RES1" != "ARSL" ]; then exit 1; fi
+        RES1=$(python bootstrap/main.py transpiler.prf < input1.txt)
+        echo "Input: +>-<"
+        echo "Output: $RES1"
+        if [ "$RES1" != "++*p;++p;--*p;--p;" ]; then exit 1; fi
         
         echo -n ">+<-" > input2.txt
-        RES2=$(python bootstrap/main.py aot.prf < input2.txt)
-        echo "Input: >+<-, Output: $RES2"
-        if [ "$RES2" != "RALS" ]; then exit 1; fi
+        RES2=$(python bootstrap/main.py transpiler.prf < input2.txt)
+        echo "Input: >+<-"
+        echo "Output: $RES2"
+        if [ "$RES2" != "++p;++*p;--p;--*p;" ]; then exit 1; fi
         
-        echo "AOT Compiler test passed!"
+        echo "C-Transpiler test passed! We have a real compiler!"
         exit 0
