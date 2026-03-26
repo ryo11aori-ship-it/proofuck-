@@ -1,28 +1,28 @@
-name: proofuck-vm-test
+name: proofuck-aot-test
 on: [push, pull_request]
 jobs:
-  test-vm:
+  test-aot:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate VM Lexer PRF
+    - name: Generate AOT Compiler PRF
       run: |
-        python -c "step=',[>+>>+<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]'+'>'*8+'+'+'<'*8+']<>>'+'-'*45+'>+<[>[-]<[-]]>[[-]'+'>'*6+'-'+'<'*6+']<<<<'; print(step*3 + '>'*10 + '>++++++[<++++++++>-]<.')" > vm.bf
-        python tools/reverse_generator.py "$(cat vm.bf)" > vm.prf
+        python -c "b=',[>+>>+>>+>>+<<<<<<<<-]>' + '-'*43 + '>+<[>[-]<[-]]>[[-]<'+'+'*65+'.[-]>]<<>>>' + '-'*45 + '>+<[>[-]<[-]]>[[-]<'+'+'*83+'.[-]>]<<<<>>>>>' + '-'*62 + '>+<[>[-]<[-]]>[[-]<'+'+'*82+'.[-]>]<<<<<<>>>>>>>' + '-'*60 + '>+<[>[-]<[-]]>[[-]<'+'+'*76+'.[-]>]<<<<<<<<'; print(b*4)" > aot.bf
+        python tools/reverse_generator.py "$(cat aot.bf)" > aot.prf
     - name: Run Tests
       run: |
-        echo -n "+++" > input1.txt
-        RES1=$(python bootstrap/main.py vm.prf < input1.txt)
-        echo "Input: +++, Output: $RES1"
-        if [ "$RES1" != "3" ]; then exit 1; fi
+        echo -n "+>-<" > input1.txt
+        RES1=$(python bootstrap/main.py aot.prf < input1.txt)
+        echo "Input: +>-<, Output: $RES1"
+        if [ "$RES1" != "ARSL" ]; then exit 1; fi
         
-        echo -n "+-+" > input2.txt
-        RES2=$(python bootstrap/main.py vm.prf < input2.txt)
-        echo "Input: +-+, Output: $RES2"
-        if [ "$RES2" != "1" ]; then exit 1; fi
+        echo -n ">+<-" > input2.txt
+        RES2=$(python bootstrap/main.py aot.prf < input2.txt)
+        echo "Input: >+<-, Output: $RES2"
+        if [ "$RES2" != "RALS" ]; then exit 1; fi
         
-        echo "VM Tape test passed!"
+        echo "AOT Compiler test passed!"
         exit 0
