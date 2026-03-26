@@ -1,30 +1,30 @@
-name: proofuck-transpiler-test
+name: proofuck-var-to-c-test
 on: [push, pull_request]
 jobs:
-  test-transpiler:
+  test-var-c:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate C-Transpiler PRF
+    - name: Generate Proofuck Variable Transpiler PRF
       run: |
-        python -c "b=',[>+>>+>>+>>+<<<<<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..-.'+'+'*70+'.'+'-'*53+'.[-]>]<<>>>'+'-'*45+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..---.'+'+'*70+'.'+'-'*53+'.[-]>]<<<<>>>>>'+'-'*62+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..'+'+'*69+'.'+'-'*53+'.[-]>]<<<<<<>>>>>>>'+'-'*60+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..'+'+'*67+'.'+'-'*53+'.[-]>]<<<<<<<<'; print(b*4)" > transpiler.bf
-        python tools/reverse_generator.py "$(cat transpiler.bf)" > transpiler.prf
+        python -c "print(',>,>,>[-]>[-]<<+++++[>++++++++<-]>++.[-]<[-]>[-]<<+++++++[>++++++++++++++++<-]>.[-]<[-]>[-]<<++++++[>++++++++++<-]>+.[-]<<.>[-]>[-]<<++++++[>++++++++++<-]>-.[-]<')" > var_c.bf
+        python tools/reverse_generator.py "$(cat var_c.bf)" > var_c.prf
     - name: Run Tests
       run: |
-        echo -n "+>-<" > input1.txt
-        RES1=$(python bootstrap/main.py transpiler.prf < input1.txt)
-        echo "Input: +>-<"
+        echo -n "x=5" > input1.txt
+        RES1=$(python bootstrap/main.py var_c.prf < input1.txt)
+        echo "Input: x=5"
         echo "Output: $RES1"
-        if [ "$RES1" != "++*p;++p;--*p;--p;" ]; then exit 1; fi
+        if [ "$RES1" != "*p=5;" ]; then exit 1; fi
         
-        echo -n ">+<-" > input2.txt
-        RES2=$(python bootstrap/main.py transpiler.prf < input2.txt)
-        echo "Input: >+<-"
+        echo -n "y=9" > input2.txt
+        RES2=$(python bootstrap/main.py var_c.prf < input2.txt)
+        echo "Input: y=9"
         echo "Output: $RES2"
-        if [ "$RES2" != "++p;++*p;--p;--*p;" ]; then exit 1; fi
+        if [ "$RES2" != "*p=9;" ]; then exit 1; fi
         
-        echo "C-Transpiler test passed! We have a real compiler!"
+        echo "Proofuck Var to C test passed!"
         exit 0
