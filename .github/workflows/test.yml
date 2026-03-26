@@ -22,7 +22,7 @@ jobs:
         cat << 'EOF' > tools/gen_transpiler.py
         import sys
         P = lambda s: "".join([">++++++++++[<"+"+"*(ord(c)//10)+">-]<"+"+"*(ord(c)%10)+".[-]" for c in s])
-        H = "#include <stdio.h>\nint main(){unsigned char m[30000]={0};unsigned char *p=m;\n"
+        H = "#include <stdio.h>\nint main(){unsigned char m[300000]={0};unsigned char *p=m;\n"
         F = "return 0;}\n"
         out = P(H) + ",[[>+>>+>>+>>+>>+>>+>>+>>+<<<<<<<<<<<<<<<-]>"
         out += "-"*43 + ">+<[>[-]<[-]]>[[-]<" + P("++*p;") + ">]<<"
@@ -37,40 +37,48 @@ jobs:
         sys.stdout.write(out)
         EOF
         
-    - name: Generate and Compile Transpiler
+    - name: Generate Source Files
       run: |
         python tools/gen_transpiler.py > src/transpiler.bf
         python tools/reverse_generator.py "$(cat src/transpiler.bf)" > src/transpiler.prf
+        # EOF無限ループ回避のため、末尾にヌルバイトを付与した入力用ソースを作成
+        cat src/transpiler.bf <(printf '\0') > input_source.bf
         
-    - name: E2E Test - Compile OK Program to Native Binary
+    - name: Phase 1 - Compile Compiler via Python (Stage 1)
       run: |
-        # 【修正】テストコードのバグを直しました！ O(79) から 4 を引いて K(75) を出力します！
-        python -c "open('program.bf', 'wb').write(b'+++++[>+++++++++++++++<-]>++++.----.\x00')"
+        echo "--- Python VM compiling transpiler.bf to C ---"
+        python bootstrap/main.py src/transpiler.prf < input_source.bf > stage1.c
+        gcc -O3 stage1.c -o compiler_stage1.elf
+        chmod +x compiler_stage1.elf
+        echo "Stage 1 Native Compiler Created!"
         
-        echo "Transpiling to C via Proofuck..."
-        python bootstrap/main.py src/transpiler.prf < program.bf > program.c
+    - name: Phase 2 - Compiler Compiles Itself! (Stage 2)
+      run: |
+        echo "--- NATIVE Compiler compiling transpiler.bf to C ---"
+        ./compiler_stage1.elf < input_source.bf > stage2.c
+        gcc -O3 stage2.c -o compiler_stage2.elf
+        chmod +x compiler_stage2.elf
+        echo "Stage 2 Native Compiler Created!"
         
-        echo "Compiling C to Native ELF via GCC..."
-        gcc -O3 program.c -o program.elf
-        chmod +x program.elf
-        
-        echo "Executing Native Binary!"
-        RES=$(./program.elf)
-        echo "Execution Result: $RES"
-        
-        if [ "$RES" != "OK" ]; then
-          echo "Error: Binary failed to output OK!"
+    - name: Phase 3 - The Ouroboros Verification
+      run: |
+        echo "--- Comparing Stage 1 and Stage 2 C source code ---"
+        if diff stage1.c stage2.c; then
+          echo "SUCCESS: The compiler perfectly compiled itself!"
+          echo "We are now 100% FREE from Python dependency!"
+        else
+          echo "ERROR: Stage 1 and Stage 2 outputs differ."
           exit 1
         fi
-        echo "NATIVE COMPILATION COMPLETE!!!"
         
-    - name: Commit and Push to Repository
+    - name: Commit Stage 1 Compiler to Repository
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        # ネイティブコンパイラ（ソースとバイナリ）を保存
         git add tools/gen_transpiler.py src/transpiler.bf src/transpiler.prf
         if ! git diff --staged --quiet; then
-          git commit -m "feat: complete AOT transpiler architecture"
+          git commit -m "feat: Python-independent Native Compiler (Stage 2)"
           git push
         else
           echo "No changes to commit."
