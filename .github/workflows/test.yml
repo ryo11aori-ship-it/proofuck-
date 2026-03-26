@@ -1,26 +1,26 @@
-name: proofuck-atoi-test
+name: proofuck-math-test
 on: [push, pull_request]
 jobs:
-  test-atoi:
+  test-math:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Atoi PRF
+    - name: Generate Math PRF
       run: |
-        python -c "print('>[-]<,[------------------------------------------------>[>+<-]>[<++++++++++>-]<<[>+<-],]>.')" > atoi.bf
-        python tools/reverse_generator.py "$(cat atoi.bf)" > atoi.prf
-    - name: Run Atoi Test
+        python -c "print(',>,[-<+>]<------------------------------------------------.[-]')" > math.bf
+        python tools/reverse_generator.py "$(cat math.bf)" > math.prf
+    - name: Run Math Test
       run: |
-        echo -n "65" > input1.txt
-        RES1=$(python bootstrap/main.py atoi.prf < input1.txt)
-        echo "Input: 65, Output: $RES1"
-        if [ "$RES1" != "A" ]; then exit 1; fi
-        echo -n "89" > input2.txt
-        RES2=$(python bootstrap/main.py atoi.prf < input2.txt)
-        echo "Input: 89, Output: $RES2"
-        if [ "$RES2" != "Y" ]; then exit 1; fi
-        echo "Atoi test passed!"
+        echo -n "23" > input1.txt
+        RES1=$(python bootstrap/main.py math.prf < input1.txt)
+        echo "Input: 23, Output: $RES1"
+        if [ "$RES1" != "5" ]; then exit 1; fi
+        echo -n "45" > input2.txt
+        RES2=$(python bootstrap/main.py math.prf < input2.txt)
+        echo "Input: 45, Output: $RES2"
+        if [ "$RES2" != "9" ]; then exit 1; fi
+        echo "Math test passed!"
         exit 0
