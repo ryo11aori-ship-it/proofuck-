@@ -9,7 +9,11 @@ jobs:
       with:
         python-version: '3.10'
     - name: Generate PRF code
-      run: python tools/reverse_generator.py "++++++++[>++++++++++<-]>-.----." > test.prf
+      run: |
+        python tools/reverse_generator.py "++++++++[>++++++++++<-]>-.----." > test.prf
+        echo "=== Generated proofuck code ==="
+        cat test.prf
+        echo "==============================="
     - name: Run and Verify OK
       run: |
         RESULT=$(python bootstrap/main.py test.prf)
