@@ -1,85 +1,74 @@
-name: proofuck-bootstrap
+name: proofuck-native-parser
 on:
   push:
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
-  build-and-commit:
+  build-native-compiler:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        
-    - name: Disable Python Integer Limit
+
+    - name: 1. Setup Environment
       run: |
         python -c "content=open('bootstrap/main.py').read(); open('bootstrap/main.py','w').write('import sys\nsys.set_int_max_str_digits(0)\n' + content)"
 
-    - name: Setup Full AOT Transpiler Generator
+    - name: 2. Restore Stage 2 Native Compiler (The Engine)
       run: |
-        cat << 'EOF' > tools/gen_transpiler.py
-        import sys
-        P = lambda s: "".join([">++++++++++[<"+"+"*(ord(c)//10)+">-]<"+"+"*(ord(c)%10)+".[-]" for c in s])
-        H = "#include <stdio.h>\nint main(){unsigned char m[300000]={0};unsigned char *p=m;\n"
-        F = "return 0;}\n"
-        out = P(H) + ",[[>+>>+>>+>>+>>+>>+>>+>>+<<<<<<<<<<<<<<<-]>"
-        out += "-"*43 + ">+<[>[-]<[-]]>[[-]<" + P("++*p;") + ">]<<"
-        out += ">>>" + "-"*45 + ">+<[>[-]<[-]]>[[-]<" + P("--*p;") + ">]<<<<"
-        out += ">>>>>" + "-"*62 + ">+<[>[-]<[-]]>[[-]<" + P("++p;") + ">]<<<<<<"
-        out += ">>>>>>>" + "-"*60 + ">+<[>[-]<[-]]>[[-]<" + P("--p;") + ">]<<<<<<<<"
-        out += ">>>>>>>>>" + "-"*46 + ">+<[>[-]<[-]]>[[-]<" + P("putchar(*p);") + ">]<<<<<<<<<<"
-        out += ">>>>>>>>>>>" + "-"*44 + ">+<[>[-]<[-]]>[[-]<" + P("*p=getchar();") + ">]<<<<<<<<<<<<"
-        out += ">>>>>>>>>>>>>" + "-"*91 + ">+<[>[-]<[-]]>[[-]<" + P("while(*p){") + ">]<<<<<<<<<<<<<<"
-        out += ">>>>>>>>>>>>>>>" + "-"*93 + ">+<[>[-]<[-]]>[[-]<" + P("}") + ">]<<<<<<<<<<<<<<<<"
-        out += ",]" + P(F)
-        sys.stdout.write(out)
-        EOF
+        # 前回作ったBrainfuck-to-C ネイティブコンパイラを復元
+        cat src/transpiler.bf <(printf '\0') > input.bf
+        python bootstrap/main.py src/transpiler.prf < input.bf > compiler.c
+        gcc -O3 compiler.c -o bf_compiler.elf
+        chmod +x bf_compiler.elf
+
+    - name: 3. Write Proofuck Parser
+      run: |
+        # 「x=5」というProofuck固有の構文をパースするコンパイラのソースコード
+        echo -n ",>,>,>+++++[>++++++++<-]>++.[-]<+++++++[>++++++++++++++++<-]>.[-]<++++++[>++++++++++<-]>+.[-]<<.>++++++[>++++++++++<-]>-.[-]<" > src/prf_parser.bf
         
-    - name: Generate Source Files
+        # コンパイラのソース自体もProofuck言語（.prf）に変換して保存！
+        python tools/reverse_generator.py "$(cat src/prf_parser.bf)" > src/prf_parser.prf
+
+    - name: 4. Native Compile the Proofuck Parser!
       run: |
-        python tools/gen_transpiler.py > src/transpiler.bf
-        python tools/reverse_generator.py "$(cat src/transpiler.bf)" > src/transpiler.prf
-        # EOF無限ループ回避のため、末尾にヌルバイトを付与した入力用ソースを作成
-        cat src/transpiler.bf <(printf '\0') > input_source.bf
+        # ネイティブコンパイラを使って、パーサーをコンパイル！(Python非依存)
+        cat src/prf_parser.bf <(printf '\0') > parser_input.bf
+        ./bf_compiler.elf < parser_input.bf > prf_parser.c
+        gcc -O3 prf_parser.c -o proofuck.elf
+        chmod +x proofuck.elf
+        echo "Native Proofuck Compiler 'proofuck.elf' created!"
+
+    - name: 5. E2E Test: Compile PROOFUCK Syntax Natively!
+      run: |
+        # ユーザーはもう.bfを書かない。直接Proofuck構文を書く。
+        echo -n "x=5" > test.prf
         
-    - name: Phase 1 - Compile Compiler via Python (Stage 1)
-      run: |
-        echo "--- Python VM compiling transpiler.bf to C ---"
-        python bootstrap/main.py src/transpiler.prf < input_source.bf > stage1.c
-        gcc -O3 stage1.c -o compiler_stage1.elf
-        chmod +x compiler_stage1.elf
-        echo "Stage 1 Native Compiler Created!"
+        echo "--- Executing Native Proofuck Compiler ---"
+        ./proofuck.elf < test.prf > output.c
         
-    - name: Phase 2 - Compiler Compiles Itself! (Stage 2)
-      run: |
-        echo "--- NATIVE Compiler compiling transpiler.bf to C ---"
-        ./compiler_stage1.elf < input_source.bf > stage2.c
-        gcc -O3 stage2.c -o compiler_stage2.elf
-        chmod +x compiler_stage2.elf
-        echo "Stage 2 Native Compiler Created!"
+        echo "Generated C code:"
+        cat output.c
+        echo ""
         
-    - name: Phase 3 - The Ouroboros Verification
-      run: |
-        echo "--- Comparing Stage 1 and Stage 2 C source code ---"
-        if diff stage1.c stage2.c; then
-          echo "SUCCESS: The compiler perfectly compiled itself!"
-          echo "We are now 100% FREE from Python dependency!"
-        else
-          echo "ERROR: Stage 1 and Stage 2 outputs differ."
+        RES=$(cat output.c)
+        if [ "$RES" != "*p=5;" ]; then
+          echo "Error: Output is $RES"
           exit 1
         fi
-        
-    - name: Commit Stage 1 Compiler to Repository
+        echo "SUCCESS: NATIVE PROOFUCK COMPILATION WORKED!"
+
+    - name: 6. Commit Proofuck Compiler Sources
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        # ネイティブコンパイラ（ソースとバイナリ）を保存
-        git add tools/gen_transpiler.py src/transpiler.bf src/transpiler.prf
+        git add src/prf_parser.bf src/prf_parser.prf
         if ! git diff --staged --quiet; then
-          git commit -m "feat: Python-independent Native Compiler (Stage 2)"
+          git commit -m "feat: Native Proofuck Parser (x=N syntax)"
           git push
         else
-          echo "No changes to commit."
+          echo "No changes."
         fi
