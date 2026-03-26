@@ -11,37 +11,54 @@ jobs:
       with:
         python-version: '3.10'
         
-    - name: 1. Setup Architecture & Flat Generator
+    - name: 1. Setup Full AOT Transpiler Generator
       run: |
-        mkdir -p tools src tests
-        
-        # インデントブロック完全排除・左詰めベタ書きの最強安全ジェネレータ
         cat << 'EOF' > tools/gen_transpiler.py
         import sys
-        bf = ",[[>+>>+>>+>>+<<<<<<<-]>"
-        bf += "-"*43+">+<[>[-]<[-]]>[[-]<"+"+"*43+"..-."+"+"*70+"."+"-"*53+".[-]>]<<>>>"
-        bf += "-"*45+">+<[>[-]<[-]]>[[-]<"+"+"*45+"..---."+"+"*70+"."+"-"*53+".[-]>]<<<<>>>>>"
-        bf += "-"*62+">+<[>[-]<[-]]>[[-]<"+"+"*43+".."+"+"*69+"."+"-"*53+".[-]>]<<<<<<>>>>>>>"
-        bf += "-"*60+">+<[>[-]<[-]]>[[-]<"+"+"*45+".."+"+"*67+"."+"-"*53+".[-]>]<<<<<<<<"
-        bf += ",]"
-        sys.stdout.write(bf)
+        P = lambda s: "".join(["+"*ord(c)+".[-]" for c in s])
+        H = "#include <stdio.h>\nint main(){unsigned char m[30000]={0};unsigned char *p=m;\n"
+        F = "return 0;}\n"
+        out = P(H) + ",[>+>>+>>+>>+>>+>>+>>+>>+<<<<<<<<<<<<<<<-]>"
+        out += "-"*43 + ">+<[>[-]<[-]]>[[-]<" + P("++*p;") + ">]<<"
+        out += ">>>" + "-"*45 + ">+<[>[-]<[-]]>[[-]<" + P("--*p;") + ">]<<<<"
+        out += ">>>>>" + "-"*62 + ">+<[>[-]<[-]]>[[-]<" + P("++p;") + ">]<<<<<<"
+        out += ">>>>>>>" + "-"*60 + ">+<[>[-]<[-]]>[[-]<" + P("--p;") + ">]<<<<<<<<"
+        out += ">>>>>>>>>" + "-"*46 + ">+<[>[-]<[-]]>[[-]<" + P("putchar(*p);") + ">]<<<<<<<<<<"
+        out += ">>>>>>>>>>>" + "-"*44 + ">+<[>[-]<[-]]>[[-]<" + P("*p=getchar();") + ">]<<<<<<<<<<<<"
+        out += ">>>>>>>>>>>>>" + "-"*91 + ">+<[>[-]<[-]]>[[-]<" + P("while(*p){") + ">]<<<<<<<<<<<<<<"
+        out += ">>>>>>>>>>>>>>>" + "-"*93 + ">+<[>[-]<[-]]>[[-]<" + P("}") + ">]<<<<<<<<<<<<<<<<"
+        out += ",]" + P(F)
+        sys.stdout.write(out)
         EOF
         
     - name: 2. Generate and Compile Transpiler
       run: |
         echo "--- Generating BF source ---"
         python tools/gen_transpiler.py > src/transpiler.bf
-        
-        echo "--- Compiling to PRF (This should take < 1 second) ---"
+        echo "--- Compiling to PRF ---"
         python tools/reverse_generator.py "$(cat src/transpiler.bf)" > src/transpiler.prf
         
-    - name: 3. Sanity Check Test
+    - name: 3. E2E Test: Compile "OK" Program to Native Binary!
       run: |
-        echo -n "+>-<" > input.txt
-        RES=$(python bootstrap/main.py src/transpiler.prf < input.txt)
-        echo "Input: +>-<, Output: $RES"
-        if [ "$RES" != "++*p;++p;--*p;--p;" ]; then exit 1; fi
-        echo "Sanity Check Passed!"
+        # 「OK」という文字を出力するBrainfuckコードを作成
+        echo -n "+++++[>+++++++++++++++<-]>++++.>----." > program.bf
+        
+        echo "--- Transpiling to C via Proofuck ---"
+        python bootstrap/main.py src/transpiler.prf < program.bf > program.c
+        
+        echo "--- Compiling C to Native ELF via GCC ---"
+        gcc -O3 program.c -o program.elf
+        chmod +x program.elf
+        
+        echo "--- Executing Native Binary! ---"
+        RES=$(./program.elf)
+        echo "Execution Result: $RES"
+        
+        if [ "$RES" != "OK" ]; then
+          echo "Error: Binary failed to output OK!"
+          exit 1
+        fi
+        echo "NATIVE COMPILATION COMPLETE!!! We reached the Pure Spaces level!"
         
     - name: 4. Commit and Push to Repository
       run: |
@@ -49,7 +66,7 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add tools/gen_transpiler.py src/transpiler.bf src/transpiler.prf
         if ! git diff --staged --quiet; then
-          git commit -m "chore: bootstrap proofuck transpiler architecture"
+          git commit -m "feat: complete AOT transpiler architecture"
           git push
         else
           echo "No changes to commit."
