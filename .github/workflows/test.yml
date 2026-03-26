@@ -1,42 +1,28 @@
-name: proofuck-executable-elf-test
+name: proofuck-vm-test
 on: [push, pull_request]
 jobs:
-  test-exec-elf:
+  test-vm:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Disable Python Integer Limit
+    - name: Generate VM Lexer PRF
       run: |
-        sed -i 's/import sys/import sys\nsys.set_int_max_str_digits(0)/' bootstrap/main.py || true
-    - name: Generate Executable ELF PRF
-      run: |
-        python -c "elf=b'\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00\x01\x00\x00\x00\x78\x00\x40\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x40\x00\x38\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x84\x00\x00\x00\x00\x00\x00\x00\x84\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\xb8\x3c\x00\x00\x00\xbf\x2a\x00\x00\x00\x0f\x05'; print(''.join(['>.[-]< ' if x==0 else '>'+'+'*10+'[<'+'+'*(x//10)+'>-]<'+'+'*(x%10)+'.[-]>[-]< ' for x in elf]))" > exec.bf
-        python tools/reverse_generator.py "$(cat exec.bf)" > exec.prf
+        python -c "step=',[>+>>+<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]'+'>'*8+'+'+'<'*8+']<>>'+'-'*45+'>+<[>[-]<[-]]>[[-]'+'>'*6+'-'+'<'*6+']<<<<'; print(step*3 + '>'*10 + '>++++++[<++++++++>-]<.')" > vm.bf
+        python tools/reverse_generator.py "$(cat vm.bf)" > vm.prf
     - name: Run Tests
       run: |
-        echo "Compiling PRF to text output..."
-        python bootstrap/main.py exec.prf > out_utf8.txt
+        echo -n "+++" > input1.txt
+        RES1=$(python bootstrap/main.py vm.prf < input1.txt)
+        echo "Input: +++, Output: $RES1"
+        if [ "$RES1" != "3" ]; then exit 1; fi
         
-        echo "Converting text output back to pure binary..."
-        python -c "open('proofuck_out.bin', 'wb').write(open('out_utf8.txt', 'r', encoding='utf-8').read().encode('latin1'))"
+        echo -n "+-+" > input2.txt
+        RES2=$(python bootstrap/main.py vm.prf < input2.txt)
+        echo "Input: +-+, Output: $RES2"
+        if [ "$RES2" != "1" ]; then exit 1; fi
         
-        echo "Adding execution permission..."
-        chmod +x proofuck_out.bin
-        
-        echo "Executing the generated native binary!"
-        set +e
-        ./proofuck_out.bin
-        EXIT_CODE=$?
-        set -e
-        
-        echo "Execution returned: $EXIT_CODE"
-        if [ "$EXIT_CODE" != "42" ]; then 
-          echo "Error: Generated ELF did not return exit code 42!"
-          exit 1
-        fi
-        
-        echo "Executable ELF test passed! Engine is fully capable!"
+        echo "VM Tape test passed!"
         exit 0
