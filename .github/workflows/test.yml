@@ -1,5 +1,7 @@
 name: proofuck-bootstrap
-on: [push, workflow_dispatch]
+on:
+  push:
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -11,7 +13,7 @@ jobs:
       with:
         python-version: '3.10'
         
-    - name: 1. Setup Full AOT Transpiler Generator
+    - name: Setup Full AOT Transpiler Generator
       run: |
         cat << 'EOF' > tools/gen_transpiler.py
         import sys
@@ -31,26 +33,23 @@ jobs:
         sys.stdout.write(out)
         EOF
         
-    - name: 2. Generate and Compile Transpiler
+    - name: Generate and Compile Transpiler
       run: |
-        echo "--- Generating BF source ---"
         python tools/gen_transpiler.py > src/transpiler.bf
-        echo "--- Compiling to PRF ---"
         python tools/reverse_generator.py "$(cat src/transpiler.bf)" > src/transpiler.prf
         
-    - name: 3. E2E Test: Compile "OK" Program to Native Binary!
+    - name: E2E Test - Compile OK Program to Native Binary
       run: |
-        # 「OK」という文字を出力するBrainfuckコードを作成
         echo -n "+++++[>+++++++++++++++<-]>++++.>----." > program.bf
         
-        echo "--- Transpiling to C via Proofuck ---"
+        echo "Transpiling to C via Proofuck..."
         python bootstrap/main.py src/transpiler.prf < program.bf > program.c
         
-        echo "--- Compiling C to Native ELF via GCC ---"
+        echo "Compiling C to Native ELF via GCC..."
         gcc -O3 program.c -o program.elf
         chmod +x program.elf
         
-        echo "--- Executing Native Binary! ---"
+        echo "Executing Native Binary!"
         RES=$(./program.elf)
         echo "Execution Result: $RES"
         
@@ -58,9 +57,9 @@ jobs:
           echo "Error: Binary failed to output OK!"
           exit 1
         fi
-        echo "NATIVE COMPILATION COMPLETE!!! We reached the Pure Spaces level!"
+        echo "NATIVE COMPILATION COMPLETE!!!"
         
-    - name: 4. Commit and Push to Repository
+    - name: Commit and Push to Repository
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
