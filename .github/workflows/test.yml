@@ -1,28 +1,52 @@
-name: proofuck-var-to-c-test
-on: [push, pull_request]
+name: proofuck-bootstrap
+on: [push, workflow_dispatch]
+permissions:
+  contents: write
 jobs:
-  test-var-c:
+  build-and-commit:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Proofuck Variable Transpiler PRF
-      run: |
-        python -c "print(',>,>,>+++++[>++++++++<-]>++.[-]<+++++++[>++++++++++++++++<-]>.[-]<++++++[>++++++++++<-]>+.[-]<<.>++++++[>++++++++++<-]>-.[-]<')" > var_c.bf
-        python tools/reverse_generator.py "$(cat var_c.bf)" > var_c.prf
-    - name: Run Tests
-      run: |
-        echo -n "x=5" > input1.txt
-        RES1=$(python bootstrap/main.py var_c.prf < input1.txt)
-        echo "Input: x=5, Output: $RES1"
-        if [ "$RES1" != "*p=5;" ]; then exit 1; fi
         
-        echo -n "y=9" > input2.txt
-        RES2=$(python bootstrap/main.py var_c.prf < input2.txt)
-        echo "Input: y=9, Output: $RES2"
-        if [ "$RES2" != "*p=9;" ]; then exit 1; fi
+    - name: 1. Setup Architecture & Flat Generator
+      run: |
+        # ディレクトリ構造の作成
+        mkdir -p tools src tests
         
-        echo "Proofuck Var to C test passed!"
-        exit 0
+        # インデントエラーが絶対に起きない、平坦なジェネレータスクリプトを生成
+        cat << 'EOF' > tools/gen_transpiler.py
+        import sys;
+        b=',[>+>>+>>+>>+<<<<<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..-.'+'+'*70+'.'+'-'*53+'.[-]>]<<>>>'+'-'*45+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..---.'+'+'*70+'.'+'-'*53+'.[-]>]<<<<>>>>>'+'-'*62+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..'+'+'*69+'.'+'-'*53+'.[-]>]<<<<<<>>>>>>>'+'-'*60+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..'+'+'*67+'.'+'-'*53+'.[-]>]<<<<<<<<';
+        sys.stdout.write(b*100);
+        EOF
+        
+    - name: 2. Generate and Compile Transpiler
+      run: |
+        echo "--- Generating BF source ---"
+        python tools/gen_transpiler.py > src/transpiler.bf
+        
+        echo "--- Compiling to PRF (This may take a few seconds) ---"
+        python tools/reverse_generator.py "$(cat src/transpiler.bf)" > src/transpiler.prf
+        
+    - name: 3. Sanity Check Test
+      run: |
+        echo -n "+>-<" > input.txt
+        RES=$(python bootstrap/main.py src/transpiler.prf < input.txt)
+        echo "Input: +>-<, Output: $RES"
+        if [ "$RES" != "++*p;++p;--*p;--p;" ]; then exit 1; fi
+        echo "Sanity Check Passed!"
+        
+    - name: 4. Commit and Push to Repository
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add tools/gen_transpiler.py src/transpiler.bf src/transpiler.prf
+        if ! git diff --staged --quiet; then
+          git commit -m "chore: bootstrap proofuck transpiler architecture"
+          git push
+        else
+          echo "No changes to commit."
+        fi
