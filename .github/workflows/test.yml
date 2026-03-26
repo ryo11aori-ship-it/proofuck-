@@ -1,30 +1,33 @@
-name: proofuck-var-assign-test
+name: proofuck-duplicate-test
 on: [push, pull_request]
 jobs:
-  test-var-assign:
+  test-duplicate:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Var Assign PRF
+    - name: Generate Duplicate Validator PRF
       run: |
-        python -c "print(',,>[-]<,----------[--------------------------------------<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],----------]<.')" > var_assign.bf
-        python tools/reverse_generator.py "$(cat var_assign.bf)" > var_assign.prf
+        echo ",>,[<->-]<>+<[[-]>[-]<]>>+<[>[-]<[-]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]]>[-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]]" > dup.bf
+        python tools/reverse_generator.py "$(cat dup.bf)" > dup.prf
     - name: Run Tests
       run: |
-        echo "x=65" > input1.txt
-        RES1=$(python bootstrap/main.py var_assign.prf < input1.txt)
-        echo "Input: x=65, Output: $RES1"
-        if [ "$RES1" != "A" ]; then exit 1; fi
-        echo "y=89" > input2.txt
-        RES2=$(python bootstrap/main.py var_assign.prf < input2.txt)
-        echo "Input: y=89, Output: $RES2"
-        if [ "$RES2" != "Y" ]; then exit 1; fi
-        echo "z=122" > input3.txt
-        RES3=$(python bootstrap/main.py var_assign.prf < input3.txt)
-        echo "Input: z=122, Output: $RES3"
-        if [ "$RES3" != "z" ]; then exit 1; fi
-        echo "Var Assign test passed!"
+        echo -n "AA" > input1.txt
+        RES1=$(python bootstrap/main.py dup.prf < input1.txt)
+        echo "Input: AA, Output: $RES1"
+        if [ "$RES1" != "E" ]; then exit 1; fi
+        
+        echo -n "AB" > input2.txt
+        RES2=$(python bootstrap/main.py dup.prf < input2.txt)
+        echo "Input: AB, Output: $RES2"
+        if [ "$RES2" != "D" ]; then exit 1; fi
+        
+        echo -n "55" > input3.txt
+        RES3=$(python bootstrap/main.py dup.prf < input3.txt)
+        echo "Input: 55, Output: $RES3"
+        if [ "$RES3" != "E" ]; then exit 1; fi
+        
+        echo "Duplicate Validator test passed!"
         exit 0
