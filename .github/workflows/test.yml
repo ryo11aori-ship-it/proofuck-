@@ -1,21 +1,31 @@
-name: proofuck-ci
+name: proofuck-lexer-test
 on: [push, pull_request]
 jobs:
-  test:
+  test-lexer:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate PRF code
+    - name: Generate Lexer PRF code
       run: |
-        python tools/reverse_generator.py "++++++++[>++++++++++<-]>-.----." > test.prf
-        echo "=== Generated proofuck code ==="
-        cat test.prf
-        echo "==============================="
-    - name: Run and Verify OK
+        python tools/reverse_generator.py ">+[>,----------[<->-]<[>++++++++++++++++++++++[<---------------------->-]<[<<+>>[-]]<[<<+>>[-]]]<<]>>[.>]" > lexer.prf
+        echo "=== Generated lexer.prf ==="
+        cat lexer.prf
+        echo "==========================="
+    - name: Run Lexer and Verify
       run: |
-        RESULT=$(python bootstrap/main.py test.prf)
+        echo -e "H e l l o\n  P r o o f u c k !" > input.txt
+        echo "=== Input Data ==="
+        cat input.txt
+        echo "=================="
+        RESULT=$(python bootstrap/main.py lexer.prf < input.txt)
         echo "Output was: $RESULT"
-        if [ "$RESULT" = "OK" ]; then exit 0; else exit 1; fi
+        if [ "$RESULT" = "HelloProofuck!" ]; then
+          echo "Lexer test passed!"
+          exit 0
+        else
+          echo "Lexer test failed!"
+          exit 1
+        fi
