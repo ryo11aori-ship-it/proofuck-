@@ -44,7 +44,8 @@ jobs:
         
     - name: E2E Test - Compile OK Program to Native Binary
       run: |
-        echo -n "+++++[>+++++++++++++++<-]>++++.>----." > program.bf
+        # 最後にヌルバイト(\x00)を付与して、BrainfuckのEOF無限ループを完全回避！
+        python -c "open('program.bf', 'wb').write(b'+++++[>+++++++++++++++<-]>++++.----.\x00')"
         
         echo "Transpiling to C via Proofuck..."
         python bootstrap/main.py src/transpiler.prf < program.bf > program.c
