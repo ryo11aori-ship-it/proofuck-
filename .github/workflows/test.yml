@@ -1,0 +1,17 @@
+name: proofuck-ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Generate PRF code
+      run: python tools/reverse_generator.py "++++++++[>++++++++++<-]>-.----." > test.prf
+    - name: Run and Verify OK
+      run: |
+        RESULT=$(python bootstrap/main.py test.prf)
+        echo "Output was: $RESULT"
+        if [ "$RESULT" = "OK" ]; then exit 0; else exit 1; fi
