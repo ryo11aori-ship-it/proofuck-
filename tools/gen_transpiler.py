@@ -1,6 +1,6 @@
 import sys
 P = lambda s: "".join([">++++++++++[<"+"+"*(ord(c)//10)+">-]<"+"+"*(ord(c)%10)+".[-]" for c in s])
-H = "#include <stdio.h>\nint main(){unsigned char m[30000]={0};unsigned char *p=m;\n"
+H = "#include <stdio.h>\nint main(){unsigned char m[300000]={0};unsigned char *p=m;\n"
 F = "return 0;}\n"
 out = P(H) + ",[[>+>>+>>+>>+>>+>>+>>+>>+<<<<<<<<<<<<<<<-]>"
 out += "-"*43 + ">+<[>[-]<[-]]>[[-]<" + P("++*p;") + ">]<<"
