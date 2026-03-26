@@ -8,6 +8,9 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+    - name: Disable Python Integer Limit (Patch main.py)
+      run: |
+        sed -i 's/import sys/import sys\nsys.set_int_max_str_digits(0)/' bootstrap/main.py
     - name: Generate Prime Validator PRF
       run: |
         cat << 'EOF' > gen_prime.py
