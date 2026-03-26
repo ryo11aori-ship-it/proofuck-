@@ -1,1 +1,29 @@
-import os;os.makedirs(".github/workflows",exist_ok=True);open(".github/workflows/lexer_test.yml","w").write("name: proofuck-lexer-test\non: [push, pull_request]\njobs:\n  test-lexer:\n    runs-on: ubuntu-latest\n    steps:\n    - uses: actions/checkout@v4\n    - uses: actions/setup-python@v5\n      with:\n        python-version: '3.10'\n    - name: Generate Lexer PRF code\n      run: |\n        python tools/reverse_generator.py \",[----------[----------------------[++++++++++++++++++++++++++++++++.[-]]][-],]\" > lexer.prf\n        cat lexer.prf\n    - name: Run Lexer and Verify\n      run: |\n        echo -e \"H e l l o\\n  P r o o f u c k !\" > input.txt\n        RESULT=$(python bootstrap/main.py lexer.prf < input.txt)\n        echo \"Output was: $RESULT\"\n        if [ \"$RESULT\" = \"HelloProofuck!\" ]; then exit 0; else exit 1; fi\n")
+name: proofuck-lexer-test
+on: [push, pull_request]
+jobs:
+  test-lexer:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Generate Lexer PRF code
+      run: |
+        python tools/reverse_generator.py ",[----------[----------------------[++++++++++++++++++++++++++++++++.[-]]][-],]" > lexer.prf
+        echo "=== Generated lexer.prf ==="
+        cat lexer.prf
+    - name: Run Lexer and Verify
+      run: |
+        echo -e "H e l l o\n  P r o o f u c k !" > input.txt
+        echo "=== Input Data ==="
+        cat input.txt
+        RESULT=$(python bootstrap/main.py lexer.prf < input.txt)
+        echo "Output was: $RESULT"
+        if [ "$RESULT" = "HelloProofuck!" ]; then
+          echo "Lexer test passed!"
+          exit 0
+        else
+          echo "Lexer test failed!"
+          exit 1
+        fi
