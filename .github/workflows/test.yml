@@ -10,20 +10,18 @@ jobs:
         python-version: '3.10'
     - name: Generate Proofuck Variable Transpiler PRF
       run: |
-        python -c "print(',>,>,>[-]>[-]<<+++++[>++++++++<-]>++.[-]<[-]>[-]<<+++++++[>++++++++++++++++<-]>.[-]<[-]>[-]<<++++++[>++++++++++<-]>+.[-]<<++++++[>++++++++<-]>.>[-]>[-]<<++++++[>++++++++++<-]>-.[-]<')" > var_c.bf
+        python -c "print(',>,>,>+++++[>++++++++<-]>++.[-]<+++++++[>++++++++++++++++<-]>.[-]<++++++[>++++++++++<-]>+.[-]<<.>++++++[>++++++++++<-]>-.[-]<')" > var_c.bf
         python tools/reverse_generator.py "$(cat var_c.bf)" > var_c.prf
     - name: Run Tests
       run: |
         echo -n "x=5" > input1.txt
         RES1=$(python bootstrap/main.py var_c.prf < input1.txt)
-        echo "Input: x=5"
-        echo "Output: $RES1"
+        echo "Input: x=5, Output: $RES1"
         if [ "$RES1" != "*p=5;" ]; then exit 1; fi
         
         echo -n "y=9" > input2.txt
         RES2=$(python bootstrap/main.py var_c.prf < input2.txt)
-        echo "Input: y=9"
-        echo "Output: $RES2"
+        echo "Input: y=9, Output: $RES2"
         if [ "$RES2" != "*p=9;" ]; then exit 1; fi
         
         echo "Proofuck Var to C test passed!"
