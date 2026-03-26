@@ -1,29 +1,26 @@
-name: proofuck-lexer-test
+name: proofuck-syntax-test
 on: [push, pull_request]
 jobs:
-  test-lexer:
+  test-syntax:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Lexer PRF code
+    - name: Generate Syntax Checker PRF
       run: |
-        python tools/reverse_generator.py ",[----------[----------------------[++++++++++++++++++++++++++++++++.[-]]][-],]" > lexer.prf
-        echo "=== Generated lexer.prf ==="
-        cat lexer.prf
-    - name: Run Lexer and Verify
+        python -c "print('>,++++++++++++++++++++++++++++++[<+>-]>,++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++[<+>-]>,+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++[<+>-]<<<>+<[>[-]<[-]]>[>++++++++[<++++++++++>-]<-.[-]>+++++++++[<++++++++>-]<+++.[-]]')" > checker.bf
+        python tools/reverse_generator.py "$(cat checker.bf)" > syntax.prf
+    - name: Run Syntax Checker Test
       run: |
-        echo -e "H e l l o\n  P r o o f u c k !" > input.txt
-        echo "=== Input Data ==="
-        cat input.txt
-        RESULT=$(python bootstrap/main.py lexer.prf < input.txt)
-        echo "Output was: $RESULT"
-        if [ "$RESULT" = "HelloProofuck!" ]; then
-          echo "Lexer test passed!"
-          exit 0
-        else
-          echo "Lexer test failed!"
-          exit 1
-        fi
+        python -c "print('\xe2\x88\xb5', end='')" > valid.txt
+        python -c "print('x=53', end='')" > invalid.txt
+        RES_VALID=$(python bootstrap/main.py syntax.prf < valid.txt)
+        echo "Valid output: $RES_VALID"
+        if [ "$RES_VALID" != "OK" ]; then exit 1; fi
+        RES_INVALID=$(python bootstrap/main.py syntax.prf < invalid.txt)
+        echo "Invalid output: $RES_INVALID"
+        if [ "$RES_INVALID" != "" ]; then exit 1; fi
+        echo "Syntax checker passed!"
+        exit 0
