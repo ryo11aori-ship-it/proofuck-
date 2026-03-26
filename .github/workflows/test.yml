@@ -1,1 +1,33 @@
-import os;os.makedirs(".github/workflows",exist_ok=True);open(".github/workflows/multidigit_atoi_test.yml","w").write("name: proofuck-multidigit-atoi-test\non: [push, pull_request]\njobs:\n  test-multidigit:\n    runs-on: ubuntu-latest\n    steps:\n    - uses: actions/checkout@v4\n    - uses: actions/setup-python@v5\n      with:\n        python-version: '3.10'\n    - name: Generate Multi-digit Atoi PRF\n      run: |\n        python -c \"print('>[-]<,----------[--------------------------------------<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],----------]<.')\" > multidigit.bf\n        python tools/reverse_generator.py \"$(cat multidigit.bf)\" > multidigit.prf\n    - name: Run Tests\n      run: |\n        echo \"65\" > input1.txt\n        RES1=$(python bootstrap/main.py multidigit.prf < input1.txt)\n        echo \"Input: 65, Output: $RES1\"\n        if [ \"$RES1\" != \"A\" ]; then exit 1; fi\n        echo \"89\" > input2.txt\n        RES2=$(python bootstrap/main.py multidigit.prf < input2.txt)\n        echo \"Input: 89, Output: $RES2\"\n        if [ \"$RES2\" != \"Y\" ]; then exit 1; fi\n        echo \"122\" > input3.txt\n        RES3=$(python bootstrap/main.py multidigit.prf < input3.txt)\n        echo \"Input: 122, Output: $RES3\"\n        if [ \"$RES3\" != \"z\" ]; then exit 1; fi\n        echo \"Multi-digit Atoi test passed!\"\n        exit 0\n")
+name: proofuck-multidigit-atoi-test
+on: [push, pull_request]
+jobs:
+  test-multidigit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Generate Multi-digit Atoi PRF
+      run: |
+        python -c "print('>[-]<,----------[--------------------------------------<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],----------]<.')" > multidigit.bf
+        python tools/reverse_generator.py "$(cat multidigit.bf)" > multidigit.prf
+    - name: Run Tests
+      run: |
+        echo "65" > input1.txt
+        RES1=$(python bootstrap/main.py multidigit.prf < input1.txt)
+        echo "Input: 65, Output: $RES1"
+        if [ "$RES1" != "A" ]; then exit 1; fi
+        
+        echo "89" > input2.txt
+        RES2=$(python bootstrap/main.py multidigit.prf < input2.txt)
+        echo "Input: 89, Output: $RES2"
+        if [ "$RES2" != "Y" ]; then exit 1; fi
+        
+        echo "122" > input3.txt
+        RES3=$(python bootstrap/main.py multidigit.prf < input3.txt)
+        echo "Input: 122, Output: $RES3"
+        if [ "$RES3" != "z" ]; then exit 1; fi
+        
+        echo "Multi-digit Atoi test passed!"
+        exit 0
