@@ -1,28 +1,28 @@
-name: proofuck-mul-test
+name: proofuck-ast-test
 on: [push, pull_request]
 jobs:
-  test-mul:
+  test-ast:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Multiplier PRF
+    - name: Generate AST Priority PRF
       run: |
-        python -c "print(',>++++++[<-------->-]<>,[-],>++++++[<-------->-]<<[>[->+>+<<]>>[-<<+>>]<<<-]>>>++++++[<++++++++>-]<.')" > mul.bf
-        python tools/reverse_generator.py "$(cat mul.bf)" > mul.prf
+        python -c "print(',>++++++[<-------->-]<>,[-]<>,>++++++[<-------->-]<>,[-]<>,>++++++[<-------->-]<[<+>-]<<[>[->+>+<<]>>[-<<+>>]<<<-]>>>++++++[<++++++++>-]<.')" > ast.bf
+        python tools/reverse_generator.py "$(cat ast.bf)" > ast.prf
     - name: Run Tests
       run: |
-        echo -n "3*2" > input1.txt
-        RES1=$(python bootstrap/main.py mul.prf < input1.txt)
-        echo "Input: 3*2, Output: $RES1"
-        if [ "$RES1" != "6" ]; then exit 1; fi
+        echo -n "2*1+3" > input1.txt
+        RES1=$(python bootstrap/main.py ast.prf < input1.txt)
+        echo "Input: 2*1+3, Output: $RES1"
+        if [ "$RES1" != "8" ]; then exit 1; fi
         
-        echo -n "4*2" > input2.txt
-        RES2=$(python bootstrap/main.py mul.prf < input2.txt)
-        echo "Input: 4*2, Output: $RES2"
-        if [ "$RES2" != "8" ]; then exit 1; fi
+        echo -n "3*1+2" > input2.txt
+        RES2=$(python bootstrap/main.py ast.prf < input2.txt)
+        echo "Input: 3*1+2, Output: $RES2"
+        if [ "$RES2" != "9" ]; then exit 1; fi
         
-        echo "Multiplier test passed!"
+        echo "AST Priority test passed!"
         exit 0
