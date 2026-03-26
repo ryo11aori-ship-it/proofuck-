@@ -13,14 +13,18 @@ jobs:
         
     - name: 1. Setup Architecture & Flat Generator
       run: |
-        # ディレクトリ構造の作成
         mkdir -p tools src tests
         
-        # インデントエラーが絶対に起きない、平坦なジェネレータスクリプトを生成
+        # インデントブロック完全排除・左詰めベタ書きの最強安全ジェネレータ
         cat << 'EOF' > tools/gen_transpiler.py
-        import sys;
-        b=',[>+>>+>>+>>+<<<<<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..-.'+'+'*70+'.'+'-'*53+'.[-]>]<<>>>'+'-'*45+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..---.'+'+'*70+'.'+'-'*53+'.[-]>]<<<<>>>>>'+'-'*62+'>+<[>[-]<[-]]>[[-]<'+'+'*43+'..'+'+'*69+'.'+'-'*53+'.[-]>]<<<<<<>>>>>>>'+'-'*60+'>+<[>[-]<[-]]>[[-]<'+'+'*45+'..'+'+'*67+'.'+'-'*53+'.[-]>]<<<<<<<<';
-        sys.stdout.write(b*100);
+        import sys
+        bf = ",[[>+>>+>>+>>+<<<<<<<-]>"
+        bf += "-"*43+">+<[>[-]<[-]]>[[-]<"+"+"*43+"..-."+"+"*70+"."+"-"*53+".[-]>]<<>>>"
+        bf += "-"*45+">+<[>[-]<[-]]>[[-]<"+"+"*45+"..---."+"+"*70+"."+"-"*53+".[-]>]<<<<>>>>>"
+        bf += "-"*62+">+<[>[-]<[-]]>[[-]<"+"+"*43+".."+"+"*69+"."+"-"*53+".[-]>]<<<<<<>>>>>>>"
+        bf += "-"*60+">+<[>[-]<[-]]>[[-]<"+"+"*45+".."+"+"*67+"."+"-"*53+".[-]>]<<<<<<<<"
+        bf += ",]"
+        sys.stdout.write(bf)
         EOF
         
     - name: 2. Generate and Compile Transpiler
@@ -28,7 +32,7 @@ jobs:
         echo "--- Generating BF source ---"
         python tools/gen_transpiler.py > src/transpiler.bf
         
-        echo "--- Compiling to PRF (This may take a few seconds) ---"
+        echo "--- Compiling to PRF (This should take < 1 second) ---"
         python tools/reverse_generator.py "$(cat src/transpiler.bf)" > src/transpiler.prf
         
     - name: 3. Sanity Check Test
