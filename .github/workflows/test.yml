@@ -1,33 +1,30 @@
-name: proofuck-multidigit-atoi-test
+name: proofuck-var-assign-test
 on: [push, pull_request]
 jobs:
-  test-multidigit:
+  test-var-assign:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Multi-digit Atoi PRF
+    - name: Generate Var Assign PRF
       run: |
-        python -c "print('>[-]<,----------[--------------------------------------<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],----------]<.')" > multidigit.bf
-        python tools/reverse_generator.py "$(cat multidigit.bf)" > multidigit.prf
+        python -c "print(',,>[-]<,----------[--------------------------------------<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],----------]<.')" > var_assign.bf
+        python tools/reverse_generator.py "$(cat var_assign.bf)" > var_assign.prf
     - name: Run Tests
       run: |
-        echo "65" > input1.txt
-        RES1=$(python bootstrap/main.py multidigit.prf < input1.txt)
-        echo "Input: 65, Output: $RES1"
+        echo "x=65" > input1.txt
+        RES1=$(python bootstrap/main.py var_assign.prf < input1.txt)
+        echo "Input: x=65, Output: $RES1"
         if [ "$RES1" != "A" ]; then exit 1; fi
-        
-        echo "89" > input2.txt
-        RES2=$(python bootstrap/main.py multidigit.prf < input2.txt)
-        echo "Input: 89, Output: $RES2"
+        echo "y=89" > input2.txt
+        RES2=$(python bootstrap/main.py var_assign.prf < input2.txt)
+        echo "Input: y=89, Output: $RES2"
         if [ "$RES2" != "Y" ]; then exit 1; fi
-        
-        echo "122" > input3.txt
-        RES3=$(python bootstrap/main.py multidigit.prf < input3.txt)
-        echo "Input: 122, Output: $RES3"
+        echo "z=122" > input3.txt
+        RES3=$(python bootstrap/main.py var_assign.prf < input3.txt)
+        echo "Input: z=122, Output: $RES3"
         if [ "$RES3" != "z" ]; then exit 1; fi
-        
-        echo "Multi-digit Atoi test passed!"
+        echo "Var Assign test passed!"
         exit 0
