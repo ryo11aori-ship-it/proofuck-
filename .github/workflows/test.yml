@@ -13,6 +13,10 @@ jobs:
       with:
         python-version: '3.10'
         
+    - name: Disable Python Integer Limit (Unleash Proofuck)
+      run: |
+        python -c "content=open('bootstrap/main.py').read(); open('bootstrap/main.py','w').write('import sys\nsys.set_int_max_str_digits(0)\n' + content)"
+
     - name: Setup Full AOT Transpiler Generator
       run: |
         cat << 'EOF' > tools/gen_transpiler.py
