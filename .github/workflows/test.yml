@@ -1,26 +1,26 @@
-name: proofuck-syntax-test
+name: proofuck-atoi-test
 on: [push, pull_request]
 jobs:
-  test-syntax:
+  test-atoi:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Syntax Checker PRF
+    - name: Generate Atoi PRF
       run: |
-        python -c "print('+>,++++++++++++++++++++++++++++++[<[-]>[-]]>,++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++[<<[-]>>[-]]>,+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++[<<<[-]>>>[-]]<<<[>>++++++++[<++++++++++>-]<-.----.[-]<[-]]')" > checker.bf
-        python tools/reverse_generator.py "$(cat checker.bf)" > syntax.prf
-    - name: Run Syntax Checker Test
+        python -c "print('>[-]<,[------------------------------------------------>[>+<-]>[<++++++++++>-]<<[>+<-],]>.')" > atoi.bf
+        python tools/reverse_generator.py "$(cat atoi.bf)" > atoi.prf
+    - name: Run Atoi Test
       run: |
-        python -c "print('\xe2\x88\xb5', end='')" > valid.txt
-        python -c "print('x=53', end='')" > invalid.txt
-        RES_VALID=$(python bootstrap/main.py syntax.prf < valid.txt)
-        echo "Valid output: $RES_VALID"
-        if [ "$RES_VALID" != "OK" ]; then exit 1; fi
-        RES_INVALID=$(python bootstrap/main.py syntax.prf < invalid.txt)
-        echo "Invalid output: $RES_INVALID"
-        if [ "$RES_INVALID" != "" ]; then exit 1; fi
-        echo "Syntax checker passed!"
+        echo -n "65" > input1.txt
+        RES1=$(python bootstrap/main.py atoi.prf < input1.txt)
+        echo "Input: 65, Output: $RES1"
+        if [ "$RES1" != "A" ]; then exit 1; fi
+        echo -n "89" > input2.txt
+        RES2=$(python bootstrap/main.py atoi.prf < input2.txt)
+        echo "Input: 89, Output: $RES2"
+        if [ "$RES2" != "Y" ]; then exit 1; fi
+        echo "Atoi test passed!"
         exit 0
