@@ -8,6 +8,9 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+    - name: Disable Python Integer Limit
+      run: |
+        sed -i 's/import sys/import sys\nsys.set_int_max_str_digits(0)/' bootstrap/main.py || true
     - name: Generate Executable ELF PRF
       run: |
         python -c "elf=b'\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00\x01\x00\x00\x00\x78\x00\x40\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x40\x00\x38\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x84\x00\x00\x00\x00\x00\x00\x00\x84\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\xb8\x3c\x00\x00\x00\xbf\x2a\x00\x00\x00\x0f\x05'; print(''.join(['>.[-]< ' if x==0 else '>'+'+'*10+'[<'+'+'*(x//10)+'>-]<'+'+'*(x%10)+'.[-]>[-]< ' for x in elf]))" > exec.bf
@@ -15,7 +18,8 @@ jobs:
     - name: Run Tests
       run: |
         echo "Compiling PRF to Native ELF Binary..."
-        python bootstrap/main.py exec.prf > proofuck_out.bin
+        # 【ここが修正点】latin1を指定してUTF-8によるバイナリ破壊を阻止します！
+        PYTHONIOENCODING=latin1 python bootstrap/main.py exec.prf > proofuck_out.bin
         
         echo "Adding execution permission..."
         chmod +x proofuck_out.bin
