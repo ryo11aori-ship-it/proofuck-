@@ -17,9 +17,11 @@ jobs:
         python tools/reverse_generator.py "$(cat exec.bf)" > exec.prf
     - name: Run Tests
       run: |
-        echo "Compiling PRF to Native ELF Binary..."
-        # 【ここが修正点】latin1を指定してUTF-8によるバイナリ破壊を阻止します！
-        PYTHONIOENCODING=latin1 python bootstrap/main.py exec.prf > proofuck_out.bin
+        echo "Compiling PRF to text output..."
+        python bootstrap/main.py exec.prf > out_utf8.txt
+        
+        echo "Converting text output back to pure binary..."
+        python -c "open('proofuck_out.bin', 'wb').write(open('out_utf8.txt', 'r', encoding='utf-8').read().encode('latin1'))"
         
         echo "Adding execution permission..."
         chmod +x proofuck_out.bin
@@ -36,5 +38,5 @@ jobs:
           exit 1
         fi
         
-        echo "Executable ELF test passed! Self-hosting 100% Complete!"
+        echo "Executable ELF test passed! Engine is fully capable!"
         exit 0
