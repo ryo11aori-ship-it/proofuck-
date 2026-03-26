@@ -1,28 +1,28 @@
-name: proofuck-calc-test
+name: proofuck-mul-test
 on: [push, pull_request]
 jobs:
-  test-calc:
+  test-mul:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Calculator PRF
+    - name: Generate Multiplier PRF
       run: |
-        python -c "print(',>++++++[<-------->-]<>>>>>>>>,[<<<<+>>+>>-]<<<<<<,>++++++[<-------->-]<>>'+'-'*43+'>+<[>[-]<[-]]>[[-]<<<[<<+>>-]>>>]>'+'-'*45+'>+<[>[-]<[-]]>[[-]<<<<<[<<->>-]>>>>>]<<<<<<<>++++++[<++++++++>-]<.')" > calc.bf
-        python tools/reverse_generator.py "$(cat calc.bf)" > calc.prf
+        python -c "print(',>++++++[<-------->-]<>,[-],>++++++[<-------->-]<<[>[->+>+<<]>>[-<<+>>]<<<-]>>>++++++[<++++++++>-]<.')" > mul.bf
+        python tools/reverse_generator.py "$(cat mul.bf)" > mul.prf
     - name: Run Tests
       run: |
-        echo -n "3+4" > input1.txt
-        RES1=$(python bootstrap/main.py calc.prf < input1.txt)
-        echo "Input: 3+4, Output: $RES1"
-        if [ "$RES1" != "7" ]; then exit 1; fi
+        echo -n "3*2" > input1.txt
+        RES1=$(python bootstrap/main.py mul.prf < input1.txt)
+        echo "Input: 3*2, Output: $RES1"
+        if [ "$RES1" != "6" ]; then exit 1; fi
         
-        echo -n "8-3" > input2.txt
-        RES2=$(python bootstrap/main.py calc.prf < input2.txt)
-        echo "Input: 8-3, Output: $RES2"
-        if [ "$RES2" != "5" ]; then exit 1; fi
+        echo -n "4*2" > input2.txt
+        RES2=$(python bootstrap/main.py mul.prf < input2.txt)
+        echo "Input: 4*2, Output: $RES2"
+        if [ "$RES2" != "8" ]; then exit 1; fi
         
-        echo "Calculator test passed!"
+        echo "Multiplier test passed!"
         exit 0
