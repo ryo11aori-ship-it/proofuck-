@@ -1,28 +1,30 @@
-name: proofuck-dec-test
+name: proofuck-elf-test
 on: [push, pull_request]
 jobs:
-  test-dec:
+  test-elf:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Decimal Extractor PRF
+    - name: Generate ELF Header PRF
       run: |
-        python -c "print(',>++++++[<-------->-]<[>++++++++++<-]>[-<+>]<>,[-],-------------------------------------------------->>+<<[<-[--->>+<<]>>>-<<-]>>[<<<[-->>+<<]>>>-]<>++++++[<++++++++>-]<.')" > dec.bf
-        python tools/reverse_generator.py "$(cat dec.bf)" > dec.prf
+        python -c "print('>++++++++++[<++++++++++++>-]<+++++++.>>++++++++++[<+++++++>-]<-.>>++++++++++[<++++++++>-]<----.>>++++++++++[<+++++++>-]<.')" > elf.bf
+        python tools/reverse_generator.py "$(cat elf.bf)" > elf.prf
     - name: Run Tests
       run: |
-        echo -n "1/2" > input1.txt
-        RES1=$(python bootstrap/main.py dec.prf < input1.txt)
-        echo "Input: 1/2, Output: 0.$RES1"
-        if [ "$RES1" != "5" ]; then exit 1; fi
+        # 実行してバイナリファイルとして出力
+        python bootstrap/main.py elf.prf > output.bin
         
-        echo -n "1/3" > input2.txt
-        RES2=$(python bootstrap/main.py dec.prf < input2.txt)
-        echo "Input: 1/3, Output: 0.$RES2"
-        if [ "$RES2" != "3" ]; then exit 1; fi
+        # 出力されたバイナリの先頭4バイトを16進数（Hex）で読み取る
+        HEX=$(python -c 'print(open("output.bin","rb").read()[:4].hex())')
+        echo "Output Hex: $HEX"
         
-        echo "Decimal Extractor test passed!"
+        if [ "$HEX" != "7f454c46" ]; then 
+          echo "Error: Magic number mismatch!"
+          exit 1
+        fi
+        
+        echo "ELF Magic Number test passed!"
         exit 0
