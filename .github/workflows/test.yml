@@ -13,11 +13,11 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 1. Setup Environment
+    - name: Setup Environment
       run: |
         python -c "content=open('bootstrap/main.py').read(); open('bootstrap/main.py','w').write('import sys\nsys.set_int_max_str_digits(0)\n' + content)"
 
-    - name: 2. Restore Stage 2 Native Compiler (The Engine)
+    - name: Restore Stage 2 Native Compiler
       run: |
         # 前回作ったBrainfuck-to-C ネイティブコンパイラを復元
         cat src/transpiler.bf <(printf '\0') > input.bf
@@ -25,7 +25,7 @@ jobs:
         gcc -O3 compiler.c -o bf_compiler.elf
         chmod +x bf_compiler.elf
 
-    - name: 3. Write Proofuck Parser
+    - name: Write Proofuck Parser
       run: |
         # 「x=5」というProofuck固有の構文をパースするコンパイラのソースコード
         echo -n ",>,>,>+++++[>++++++++<-]>++.[-]<+++++++[>++++++++++++++++<-]>.[-]<++++++[>++++++++++<-]>+.[-]<<.>++++++[>++++++++++<-]>-.[-]<" > src/prf_parser.bf
@@ -33,7 +33,7 @@ jobs:
         # コンパイラのソース自体もProofuck言語（.prf）に変換して保存！
         python tools/reverse_generator.py "$(cat src/prf_parser.bf)" > src/prf_parser.prf
 
-    - name: 4. Native Compile the Proofuck Parser!
+    - name: Native Compile the Proofuck Parser
       run: |
         # ネイティブコンパイラを使って、パーサーをコンパイル！(Python非依存)
         cat src/prf_parser.bf <(printf '\0') > parser_input.bf
@@ -42,7 +42,7 @@ jobs:
         chmod +x proofuck.elf
         echo "Native Proofuck Compiler 'proofuck.elf' created!"
 
-    - name: 5. E2E Test: Compile PROOFUCK Syntax Natively!
+    - name: E2E Test - Compile PROOFUCK Syntax Natively
       run: |
         # ユーザーはもう.bfを書かない。直接Proofuck構文を書く。
         echo -n "x=5" > test.prf
@@ -61,13 +61,13 @@ jobs:
         fi
         echo "SUCCESS: NATIVE PROOFUCK COMPILATION WORKED!"
 
-    - name: 6. Commit Proofuck Compiler Sources
+    - name: Commit Proofuck Compiler Sources
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add src/prf_parser.bf src/prf_parser.prf
         if ! git diff --staged --quiet; then
-          git commit -m "feat: Native Proofuck Parser (x=N syntax)"
+          git commit -m "feat: Native Proofuck Parser"
           git push
         else
           echo "No changes."
