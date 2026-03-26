@@ -1,33 +1,42 @@
-name: proofuck-duplicate-test
+name: proofuck-prime-test
 on: [push, pull_request]
 jobs:
-  test-duplicate:
+  test-prime:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Duplicate Validator PRF
+    - name: Generate Prime Validator PRF
       run: |
-        echo ",>,[<->-]<>+<[[-]>[-]<]>>+<[>[-]<[-]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]]>[-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]]" > dup.bf
-        python tools/reverse_generator.py "$(cat dup.bf)" > dup.prf
+        cat << 'EOF' > gen_prime.py
+        primes = [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223,227,229,233,239,241,251]
+        atoi = ">[-]<,----------[--------------------------------------<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],----------]<"
+        bf = atoi
+        for p in primes:
+            bf += "[>>+>+<<<-]>>>[<<<+>>>-]<<<>>" + "-"*p + ">+<[>[-]<[-]]>[<<+>>[-]]<<<"
+        bf += ">>+<[>[-]<++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]]>[+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.[-]]"
+        print(bf)
+        EOF
+        python gen_prime.py > prime.bf
+        python tools/reverse_generator.py "$(cat prime.bf)" > prime.prf
     - name: Run Tests
       run: |
-        echo -n "AA" > input1.txt
-        RES1=$(python bootstrap/main.py dup.prf < input1.txt)
-        echo "Input: AA, Output: $RES1"
-        if [ "$RES1" != "E" ]; then exit 1; fi
+        echo "11" > input1.txt
+        RES1=$(python bootstrap/main.py prime.prf < input1.txt)
+        echo "Input: 11, Output: $RES1"
+        if [ "$RES1" != "P" ]; then exit 1; fi
         
-        echo -n "AB" > input2.txt
-        RES2=$(python bootstrap/main.py dup.prf < input2.txt)
-        echo "Input: AB, Output: $RES2"
-        if [ "$RES2" != "D" ]; then exit 1; fi
+        echo "12" > input2.txt
+        RES2=$(python bootstrap/main.py prime.prf < input2.txt)
+        echo "Input: 12, Output: $RES2"
+        if [ "$RES2" != "C" ]; then exit 1; fi
         
-        echo -n "55" > input3.txt
-        RES3=$(python bootstrap/main.py dup.prf < input3.txt)
-        echo "Input: 55, Output: $RES3"
-        if [ "$RES3" != "E" ]; then exit 1; fi
+        echo "53" > input3.txt
+        RES3=$(python bootstrap/main.py prime.prf < input3.txt)
+        echo "Input: 53, Output: $RES3"
+        if [ "$RES3" != "P" ]; then exit 1; fi
         
-        echo "Duplicate Validator test passed!"
+        echo "Prime Validator test passed!"
         exit 0
