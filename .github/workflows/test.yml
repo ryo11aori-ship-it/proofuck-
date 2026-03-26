@@ -1,28 +1,28 @@
-name: proofuck-prime-test
+name: proofuck-operator-test
 on: [push, pull_request]
 jobs:
-  test-prime:
+  test-operator:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Generate Prime Validator PRF
+    - name: Generate Operator Router PRF
       run: |
-        python -c "print(',--------------------------------------------------->+<[>[-]<[-]>++++++++[<++++++++>-]<+++.[-]]>[[-]<++++++++[>++++++++++>-]>.[-]]')" > prime.bf
-        python tools/reverse_generator.py "$(cat prime.bf)" > prime.prf
+        python -c "print(',[>+>>+<<<-]>'+'-'*43+'>+<[>[-]<[-]]>[[-]<'+'+'*80+'.[-]>]>'+'-'*45+'>+<[>[-]<[-]]>[[-]<'+'+'*77+'.[-]>]')" > op.bf
+        python tools/reverse_generator.py "$(cat op.bf)" > op.prf
     - name: Run Tests
       run: |
-        echo -n "3" > input1.txt
-        RES1=$(python bootstrap/main.py prime.prf < input1.txt)
-        echo "Input: 3, Output: $RES1"
+        echo -n "+" > input1.txt
+        RES1=$(python bootstrap/main.py op.prf < input1.txt)
+        echo "Input: +, Output: $RES1"
         if [ "$RES1" != "P" ]; then exit 1; fi
         
-        echo -n "4" > input2.txt
-        RES2=$(python bootstrap/main.py prime.prf < input2.txt)
-        echo "Input: 4, Output: $RES2"
-        if [ "$RES2" != "C" ]; then exit 1; fi
+        echo -n "-" > input2.txt
+        RES2=$(python bootstrap/main.py op.prf < input2.txt)
+        echo "Input: -, Output: $RES2"
+        if [ "$RES2" != "M" ]; then exit 1; fi
         
-        echo "Prime Validator test passed!"
+        echo "Operator Router test passed!"
         exit 0
