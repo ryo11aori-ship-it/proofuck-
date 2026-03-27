@@ -20,7 +20,6 @@ jobs:
           import re
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
           
-          # バイナリ出力とパフォーマンス最適化
           c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
           old_calc = "            eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n            extracted_str = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(extracted_str)"
           new_calc = "            ckey = (expression, start_digit, end_digit)\n            if ckey not in block_cache:\n                eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n                block_cache[ckey] = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(block_cache[ckey])"
@@ -31,19 +30,17 @@ jobs:
           c = re.sub(r'(self\.tape\[self\.pointer\])\s*\+=\s*1', r'\1 = (\1 + 1) % 256', c)
           c = re.sub(r'(self\.tape\[self\.pointer\])\s*-=\s*1', r'\1 = (\1 - 1) % 256', c)
           
-          # EOF時の安全な読み込み
           head = "import sys\nclass SafeStdin:\n    def __init__(self, orig): self.orig = orig\n    def read(self, size=1):\n        r = self.orig.read(size)\n        return r if r else '\\x00'\n    def fileno(self): return self.orig.fileno()\nsys.stdin = SafeStdin(open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False))\nsys.set_int_max_str_digits(0)\n"
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
           
+          # 【完全修正版】古いp=lambda...を完全に消去し、フェルマーの小定理に置き換える
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
-          # 【超重要】ブロックサイズを1000文字に拡大し、結合計算の計算量爆発を完全に防ぐ
           cr = cr.replace('i-5):i] for i in range(len(tgt),0,-5)', 'i-1000):i] for i in range(len(tgt),0,-1000)')
           cr = cr.replace('fxy(100000)', 'fxy(10**1000)')
           cr = cr.replace('(6!1)', '(1001!1)')
           
-          # 1000桁(10^1000)に対応する超広域素数ジェネレータ
-          target_str = "p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
-          new_str = "def p(n):\n    if n<2: return False\n    if n in (2,3,5,7,11,13,17,19): return True\n    if n%2==0 or n%3==0 or n%5==0 or n%7==0 or n%11==0 or n%13==0 or n%17==0 or n%19==0: return False\n    return pow(2,n-1,n)==1 and pow(3,n-1,n)==1 and pow(5,n-1,n)==1\ndef gen_p():\n    n=100001\n    while True:\n        if p(n) and n not in u: yield n\n        n+=2\nP_ITER = gen_p()\ndef fxy(v):\n    while True:\n        y = next(P_ITER)\n        u.add(y)\n        x = max(2, v*y)\n        if x%2==0: x+=1\n        while x < v*y+y:\n            if p(x) and x not in u:\n                u.add(x)\n                return (x,y)\n            x+=2\npass"
+          target_str = "u=set();p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
+          new_str = "u=set()\ndef p(n):\n    if n<2: return False\n    if n in (2,3,5,7,11,13,17,19): return True\n    if n%2==0 or n%3==0 or n%5==0 or n%7==0 or n%11==0 or n%13==0 or n%17==0 or n%19==0: return False\n    return pow(2,n-1,n)==1 and pow(3,n-1,n)==1 and pow(5,n-1,n)==1\ndef gen_p():\n    n=100001\n    while True:\n        if p(n) and n not in u: yield n\n        n+=2\nP_ITER = gen_p()\ndef fxy(v):\n    while True:\n        y = next(P_ITER)\n        u.add(y)\n        x = max(2, v*y)\n        if x%2==0: x+=1\n        while x < v*y+y:\n            if p(x) and x not in u:\n                u.add(x)\n                return (x,y)\n            x+=2\npass"
           cr = cr.replace(target_str, new_str)
           cr = cr.replace('src=sys.argv[1] if len(sys.argv)>1 else', 'src=open(sys.argv[1]).read() if len(sys.argv)>1 else')
           cr = cr.replace('eq="+".join(', 'eq="+\\n".join(')
@@ -109,7 +106,7 @@ jobs:
           do_dec: dec byte [r12]; jmp fetch
           do_right: inc r12; jmp fetch
           do_left: dec r12; jmp fetch
-          do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+          do_put: mov mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
           do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
           do_jz: cmp byte [r12], 0
           jne fetch
@@ -177,4 +174,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/prf_mapper.bf src/prf_mapper.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "feat: O(1) Block merging avoiding Python string math explosion" && git push)
+          git diff --staged --quiet || (git commit -m "fix: Resolve float overflow in prime search for massive chunks" && git push)
