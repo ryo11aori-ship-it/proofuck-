@@ -33,7 +33,6 @@ jobs:
           head = "import sys\nclass SafeStdin:\n    def __init__(self, orig): self.orig = orig\n    def read(self, size=1):\n        r = self.orig.read(size)\n        return r if r else '\\x00'\n    def fileno(self): return self.orig.fileno()\nsys.stdin = SafeStdin(open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False))\nsys.set_int_max_str_digits(0)\n"
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
           
-          # 【完全修正版】古いp=lambda...を完全に消去し、フェルマーの小定理に置き換える
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
           cr = cr.replace('i-5):i] for i in range(len(tgt),0,-5)', 'i-1000):i] for i in range(len(tgt),0,-1000)')
           cr = cr.replace('fxy(100000)', 'fxy(10**1000)')
@@ -106,7 +105,7 @@ jobs:
           do_dec: dec byte [r12]; jmp fetch
           do_right: inc r12; jmp fetch
           do_left: dec r12; jmp fetch
-          do_put: mov mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+          do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
           do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
           do_jz: cmp byte [r12], 0
           jne fetch
@@ -174,4 +173,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/prf_mapper.bf src/prf_mapper.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "fix: Resolve float overflow in prime search for massive chunks" && git push)
+          git diff --staged --quiet || (git commit -m "fix: Typo in assembly and finalize native numeric mapper" && git push)
