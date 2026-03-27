@@ -11,6 +11,9 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: install_dependencies
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
       - name: patch_env
         run: |
           cat << 'EOF' > patch_env.py
@@ -121,6 +124,7 @@ jobs:
           code_start:
           EOF
           nasm -f bin stub.asm -o stub.bin
+          
           cat << 'EOF' > gen_full.py
           import sys
           P = lambda b: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in b])
