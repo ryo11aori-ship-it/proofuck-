@@ -35,10 +35,10 @@ jobs:
 
       - name: setup_elvm_and_build_c_parser
         run: |
-          # ELVMの導入と必要なモジュール(8cc, elc)の個別ビルド
-          git clone https://github.com/shinh/elvm.git
+          # ELVMの導入(--recursiveで8ccのソースも取得)
+          git clone --recursive https://github.com/shinh/elvm.git
           cd elvm
-          make -C 8cc
+          make out/8cc
           make out/elc
           cd ..
           
@@ -58,8 +58,8 @@ jobs:
           }
           EOF
           
-          # C -> アセンブリ -> Brainfuck -> Proofuck の変換チェーン
-          elvm/8cc/8cc -S parser.c
+          # C -> アセンブリ(EIR) -> Brainfuck -> Proofuck の変換チェーン
+          elvm/out/8cc -S parser.c
           elvm/out/elc -bf parser.s > src/front_parser.bf
           python tools/reverse_generator.py "$(cat src/front_parser.bf)" > src/front_parser.prf
 
