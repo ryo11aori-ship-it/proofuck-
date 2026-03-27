@@ -32,20 +32,60 @@ jobs:
           
           head = "import sys\nclass SafeStdin:\n    def __init__(self, orig): self.orig = orig\n    def read(self, size=1):\n        r = self.orig.read(size)\n        return r if r else '\\x00'\n    def fileno(self): return self.orig.fileno()\nsys.stdin = SafeStdin(open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False))\nsys.set_int_max_str_digits(0)\n"
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
-          
-          with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
-          cr = cr.replace('i-5):i] for i in range(len(tgt),0,-5)', 'i-1000):i] for i in range(len(tgt),0,-1000)')
-          cr = cr.replace('fxy(100000)', 'fxy(10**1000)')
-          cr = cr.replace('(6!1)', '(1001!1)')
-          
-          target_str = "u=set();p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
-          new_str = "u=set()\ndef p(n):\n    if n<2: return False\n    if n in (2,3,5,7,11,13,17,19): return True\n    if n%2==0 or n%3==0 or n%5==0 or n%7==0 or n%11==0 or n%13==0 or n%17==0 or n%19==0: return False\n    return pow(2,n-1,n)==1 and pow(3,n-1,n)==1 and pow(5,n-1,n)==1\ndef gen_p():\n    n=100001\n    while True:\n        if p(n) and n not in u: yield n\n        n+=2\nP_ITER = gen_p()\ndef fxy(v):\n    while True:\n        y = next(P_ITER)\n        u.add(y)\n        x = max(2, v*y)\n        if x%2==0: x+=1\n        while x < v*y+y:\n            if p(x) and x not in u:\n                u.add(x)\n                return (x,y)\n            x+=2\npass"
-          cr = cr.replace(target_str, new_str)
-          cr = cr.replace('src=sys.argv[1] if len(sys.argv)>1 else', 'src=open(sys.argv[1]).read() if len(sys.argv)>1 else')
-          cr = cr.replace('eq="+".join(', 'eq="+\\n".join(')
-          with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write("import sys\nsys.set_int_max_str_digits(0)\n" + cr)
           EOF
           python patch_env.py
+          
+          # 【完全上書き】古いコードの残骸を残さないためのクリーンなO(1)ジェネレータ
+          cat << 'EOF' > tools/reverse_generator.py
+          import sys, itertools as I
+          sys.set_int_max_str_digits(0)
+          bf = {'>':'1','<':'2','+':'3','-':'4','.':'5',',':'6','[':'7',']':'8'}
+          src = open(sys.argv[1]).read() if len(sys.argv)>1 else "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
+          tgt = "".join(bf.get(c,"") for c in src) or "9"
+          chk = [tgt[max(0,i-1000):i] for i in range(len(tgt),0,-1000)][::-1]
+          u = set()
+          
+          def p(n):
+              if n<2: return False
+              if n in (2,3,5,7,11,13,17,19): return True
+              if n%2==0 or n%3==0 or n%5==0 or n%7==0 or n%11==0 or n%13==0 or n%17==0 or n%19==0: return False
+              return pow(2,n-1,n)==1 and pow(3,n-1,n)==1 and pow(5,n-1,n)==1
+          
+          def gen_p():
+              n = 100001
+              while True:
+                  if p(n) and n not in u: yield n
+                  n += 2
+          P_ITER = gen_p()
+          
+          def fxy(v):
+              while True:
+                  y = next(P_ITER)
+                  u.add(y)
+                  x = max(2, v*y)
+                  if x%2==0: x += 1
+                  while x < v*y+y:
+                      if p(x) and x not in u:
+                          u.add(x)
+                          return (x,y)
+                      x += 2
+          
+          vg = (v+"'"*i for i in I.count() for v in ['x','y','z']+[chr(j) for j in range(945,970) if j!=962]+[chr(j) for j in range(97,120)])
+          xt, yt = (fxy(10**1000) if len(chk)>1 else (0,0))
+          xnt, ynt = (next(vg),next(vg)) if len(chk)>1 else ("","")
+          df = [f"{xnt}={xt}",f"{ynt}={yt}"] if len(chk)>1 else []
+          tb = f"({xnt}÷{ynt})(1001!1)" if len(chk)>1 else ""
+          bks = []
+          
+          for c in chk:
+              nx, ny = next(vg), next(vg)
+              px, py = fxy(int(c))
+              df.extend([f"{nx}={px}", f"{ny}={py}"])
+              bks.append(f"({nx}÷{ny})({len(c)}!1)")
+          
+          eq = "+\n".join(bks[i] + "".join("×"+tb for _ in range(len(chk)-1-i)) for i in range(len(chk)))
+          sys.stdout.write("∵\n" + "\n".join(df) + f"\n{eq}\n={tgt}\nQ.E.D.\n")
+          EOF
 
       - name: build_proofuck_elf_mapper
         run: |
@@ -173,4 +213,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/prf_mapper.bf src/prf_mapper.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "fix: Typo in assembly and finalize native numeric mapper" && git push)
+          git diff --staged --quiet || (git commit -m "fix: Complete rewrite of reverse_generator to eliminate all float overflows" && git push)
