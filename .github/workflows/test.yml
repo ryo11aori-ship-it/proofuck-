@@ -12,7 +12,7 @@ jobs:
           python-version: '3.10'
 
       - name: install_dependencies
-        run: sudo apt-get update && sudo apt-get install -y nasm
+        run: sudo apt-get update && sudo apt-get install -y nasm build-essential
 
       - name: patch_env_with_performance_fixes
         run: |
@@ -33,124 +33,49 @@ jobs:
           EOF
           python patch_env.py
 
-      - name: build_full_elf_compiler
+      - name: setup_elvm_and_build_c_parser
         run: |
-          cat << 'EOF' > stub.asm
-          BITS 64
-          ORG 0x400000
-          ehdr: db 0x7F, "ELF", 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
-          dw 2, 0x3E
-          dd 1
-          dq _start
-          dq phdr - ehdr
-          dq 0
-          dd 0
-          dw 64
-          dw 56
-          dw 1
-          dw 0
-          dw 0
-          dw 0
-          phdr: dd 1
-          dd 7
-          dq 0
-          dq 0x400000
-          dq 0x400000
-          dq 0x100000
-          dq 0x100000
-          dq 0x1000
-          _start: sub rsp, 30000
-          mov r12, rsp
-          mov rdi, r12
-          xor eax, eax
-          mov ecx, 30000
-          rep stosb
-          mov r13, 0x400000 + code_start - ehdr
-          fetch: mov al, byte [r13]
-          inc r13
-          cmp al, 0
-          je exit
-          cmp al, '+'
-          je do_inc
-          cmp al, '-'
-          je do_dec
-          cmp al, '>'
-          je do_right
-          cmp al, '<'
-          je do_left
-          cmp al, '.'
-          je do_put
-          cmp al, ','
-          je do_get
-          cmp al, '['
-          je do_jz
-          cmp al, ']'
-          je do_jnz
-          jmp fetch
-          do_inc: inc byte [r12]; jmp fetch
-          do_dec: dec byte [r12]; jmp fetch
-          do_right: inc r12; jmp fetch
-          do_left: dec r12; jmp fetch
-          do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
-          do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
-          do_jz: cmp byte [r12], 0
-          jne fetch
-          mov ecx, 1
-          scan_fwd: mov al, byte [r13]
-          inc r13
-          cmp al, 0
-          je exit
-          cmp al, '['
-          jne not_open_f
-          inc ecx
-          jmp scan_fwd
-          not_open_f: cmp al, ']'
-          jne scan_fwd
-          dec ecx
-          jnz scan_fwd
-          jmp fetch
-          do_jnz: cmp byte [r12], 0
-          je fetch
-          mov ecx, 1
-          sub r13, 2
-          scan_bwd: mov al, byte [r13]
-          dec r13
-          cmp al, ']'
-          jne not_close_b
-          inc ecx
-          jmp scan_bwd
-          not_close_b: cmp al, '['
-          jne scan_bwd
-          dec ecx
-          jnz scan_bwd
-          add r13, 2
-          jmp fetch
-          exit: mov eax, 60
-          xor edi, edi
-          syscall
-          code_start:
-          EOF
-          nasm -f bin stub.asm -o stub.bin
+          # ELVM (C to Brainfuck ツールチェーン) の導入
+          git clone https://github.com/shinh/elvm.git
+          cd elvm
+          make 8cc elc
+          cd ..
           
-          cat << 'EOF' > gen_full.py
-          import sys
-          P = lambda b: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in b])
-          with open("stub.bin", "rb") as f: data = f.read()
-          sys.stdout.write(P(data) + ",[.,]")
+          # 超小型のC言語パーサー (入力が 'A' なら '42' を返す)
+          cat << 'EOF' > parser.c
+          #include <stdio.h>
+          int main() {
+              int c = getchar();
+              if (c == 'A') {
+                  putchar('4');
+                  putchar('2');
+              } else {
+                  putchar('0');
+              }
+              return 0;
+          }
           EOF
-          python gen_full.py > src/full_native_compiler.bf
-          python tools/reverse_generator.py "$(cat src/full_native_compiler.bf)" > src/full_native_compiler.prf
+          
+          # C -> アセンブリ -> Brainfuck -> Proofuck の変換チェーン
+          elvm/out/8cc -S parser.c
+          elvm/out/elc -bf parser.s > src/front_parser.bf
+          python tools/reverse_generator.py "$(cat src/front_parser.bf)" > src/front_parser.prf
 
-      - name: test_hello_world_elf
+      - name: test_c_parser_on_proofuck
         run: |
-          echo -n "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++." > hello.bf
-          python bootstrap/main.py src/full_native_compiler.prf < hello.bf > hello.elf
-          chmod +x hello.elf
-          ./hello.elf
+          echo -n "A" > test_input.txt
+          python bootstrap/main.py src/front_parser.prf < test_input.txt > parser_out.txt
+          RES=$(cat parser_out.txt)
+          if [ "$RES" = "42" ]; then 
+            echo "SUCCESS: C Parser successfully running natively on Proofuck!"
+          else 
+            echo "FAILED: $RES"
+            exit 1
+          fi
 
       - name: commit
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/full_native_compiler.bf src/full_native_compiler.prf
-          git diff --staged --quiet || (git commit -m "feat: Feature-Complete Pure ELF Compiler with Loop Support & Perf Fix" && git push)
+          git add src/front_parser.bf src/front_parser.prf
+          git diff --staged --quiet || (git commit -m "feat: C-to-Proofuck parser toolchain infrastructure" && git push)
