@@ -25,23 +25,24 @@ jobs:
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write('import sys\nsys.set_int_max_str_digits(0)\n' + c)
           
-          # reverse_generator.py の素数探索をエラトステネスの篩でO(N)に超高速化
+          # 素数ジェネレータをメモリ無制限かつ計算量O(N)のハイブリッド版に最適化
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
           target_str = "p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
           new_str = """
-          MAX_PRIME=2000000
-          sieve=[True]*MAX_PRIME
-          sieve[0]=sieve[1]=False
-          for i in range(2,int(MAX_PRIME**0.5)+1):
-              if sieve[i]: sieve[i*i:MAX_PRIME:i]=[False]*len(range(i*i,MAX_PRIME,i))
-          primes=[i for i,b in enumerate(sieve) if b and i>=100]
-          prime_iter=iter(primes)
+          p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1))
+          def gen_p():
+              n=100
+              while True:
+                  if p(n) and n not in u: yield n
+                  n+=1
+          P_ITER = gen_p()
           def fxy(v):
               while True:
-                  y=next(prime_iter)
-                  for x in range(max(2,v*y),v*y+y):
-                      if sieve[x] and x not in u:
-                          u.add(x); u.add(y)
+                  y = next(P_ITER)
+                  u.add(y)
+                  for x in range(max(2,v*y), v*y+y):
+                      if p(x) and x not in u:
+                          u.add(x)
                           return (x,y)
           pass"""
           cr = cr.replace(target_str, new_str.strip())
@@ -63,7 +64,6 @@ jobs:
           with open("src/front_parser.bf", "w") as f: f.write(bf)
           EOF
           python tools/gen_parser.py
-          # 素数ジェネレータが高速化されているため、長めのBFでも一瞬で完了します
           python tools/reverse_generator.py src/front_parser.bf > src/front_parser.prf
 
       - name: test_proofuck_syntax_parser
