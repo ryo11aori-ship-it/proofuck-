@@ -11,21 +11,28 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: patch_env_and_optimize_prime_generator
+      - name: patch_env_and_optimize
         run: |
           cat << 'EOF' > patch_env.py
           import re
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
+          
+          # 1. バイナリ出力対応
           c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
+          
+          # 2. パフォーマンス最適化
           old_calc = "            eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n            extracted_str = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(extracted_str)"
           new_calc = "            ckey = (expression, start_digit, end_digit)\n            if ckey not in block_cache:\n                eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n                block_cache[ckey] = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(block_cache[ckey])"
           c = c.replace("        for match in matches:", "        block_cache = {}\n        for match in matches:")
           c = c.replace(old_calc, new_calc)
           new_eval = "    @staticmethod\n    def evaluate(blocks: list, operators: list) -> str:\n        if not blocks: return \"\"\n        nb = [blocks[0]]\n        no = []\n        for i, op in enumerate(operators):\n            if op == '×': nb[-1] = InterBlockStringMath._pad_and_calculate(nb[-1], blocks[i+1], '×')\n            else: nb.append(blocks[i+1]); no.append(op)\n        res = nb[0]\n        for i, op in enumerate(no): res = InterBlockStringMath._pad_and_calculate(res, nb[i+1], op)\n        return res"
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
-          with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write('import sys\nsys.set_int_max_str_digits(0)\n' + c)
           
-          # 素数ジェネレータをメモリ無制限かつ計算量O(N)のハイブリッド版に最適化
+          # 3. 入力をバイナリセーフにする (ELFの挙動と完全一致させる)
+          head = "import sys\nsys.stdin = open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False)\nsys.set_int_max_str_digits(0)\n"
+          with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
+          
+          # 素数ジェネレータの高速化
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
           target_str = "p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
           new_str = """
@@ -55,12 +62,17 @@ jobs:
       - name: build_lightweight_parser
         run: |
           cat << 'EOF' > tools/gen_parser.py
-          # ∵ (E2 88 B5) を1バイトずつ検証する軽量Brainfuckを生成
-          bf = "+ > " # flag = 1
+          # ∵ (E2 88 B5) を1バイトずつ検証
+          bf = "+ > " # flag = 1, ptr at 1
           for b in [226, 136, 181]:
               bf += ", " + "-" * b + " [ < [-] > [-] ] "
-          # flagが1なら'O'(79)を出力してflagを0に。0なら'X'(88)を出力
-          bf += "< [ [-] > ++++++++++[<+++++++>-]<+++++++++. < + > ] - [ > ++++++++++[<++++++++>-]<++++++++. < [-] ]"
+          bf += "< " # move to flag
+          
+          # 堅牢なIF-ELSE分岐
+          bf += "> + < " # cell1=1, ptr at 0
+          bf += "[ > - < [-] > ++++++++ [ < ++++++++++ > - ] < - . ] " # if flag=1: print 'O' (79)
+          bf += "> [ - > +++++++++ [ < ++++++++++ > - ] < - - . ]" # if flag=0: print 'X' (88)
+          
           with open("src/front_parser.bf", "w") as f: f.write(bf)
           EOF
           python tools/gen_parser.py
@@ -68,7 +80,6 @@ jobs:
 
       - name: test_proofuck_syntax_parser
         run: |
-          # テスト入力として「∵」を与える
           echo -n "∵" > test_syntax.txt
           python bootstrap/main.py src/front_parser.prf < test_syntax.txt > parser_out.txt
           RES=$(cat parser_out.txt)
@@ -84,4 +95,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/front_parser.bf src/front_parser.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "feat: Lightweight Proofuck syntax parser (Phase 2)" && git push)
+          git diff --staged --quiet || (git commit -m "fix: Proofuck syntax parser with robust IF-ELSE & binary safe IO" && git push)
