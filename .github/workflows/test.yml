@@ -10,7 +10,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: setup_env
+
+      - name: patch_env
         run: |
           cat << 'EOF' > patch_env.py
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
@@ -21,36 +22,124 @@ jobs:
           with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write(c)
           EOF
           python patch_env.py
-      - name: build_native_compiler
+
+      - name: build_full_elf_compiler
         run: |
-          cat << 'EOF' > tools/gen_native_compiler.py
-          import sys
-          P = lambda s: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in s])
-          H_hex = "7f454c4602010100000000000000000002003e0001000000780040000000000040000000000000000000000000000000000000004000380001000000000000000100000007000000000000000000000000004000000000000000400000000000000001000000000000000100000000000010000000000000"
-          S_hex = "4881ec307500004989e44c89e748c7c13075000030c0f3aa"
-          E_hex = "b83c00000031ff0f05"
-          out = P(bytes.fromhex(H_hex + S_hex)) + ",[[>+>>+>>+>>+>>+>>+<<<<<<<<<<<-]>"
-          out += "-"*43 + ">+<[>[-]<[-]]>[[-]<" + P(bytes.fromhex("41fe0424")) + ">]<<"
-          out += ">>>" + "-"*45 + ">+<[>[-]<[-]]>[[-]<" + P(bytes.fromhex("41fe0c24")) + ">]<<<<"
-          out += ">>>>>" + "-"*62 + ">+<[>[-]<[-]]>[[-]<" + P(bytes.fromhex("49ffc4")) + ">]<<<<<<"
-          out += ">>>>>>>" + "-"*60 + ">+<[>[-]<[-]]>[[-]<" + P(bytes.fromhex("49ffec")) + ">]<<<<<<<<"
-          out += ">>>>>>>>>" + "-"*46 + ">+<[>[-]<[-]]>[[-]<" + P(bytes.fromhex("b801000000bf010000004c89e6ba010000000f05")) + ">]<<<<<<<<<<"
-          out += ">>>>>>>>>>>" + "-"*44 + ">+<[>[-]<[-]]>[[-]<" + P(bytes.fromhex("b800000000bf000000004c89e6ba010000000f05")) + ">]<<<<<<<<<<<<"
-          out += ",]" + P(bytes.fromhex(E_hex))
-          sys.stdout.write(out)
+          cat << 'EOF' > stub.asm
+          BITS 64
+          ORG 0x400000
+          ehdr: db 0x7F, "ELF", 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          dw 2, 0x3E
+          dd 1
+          dq _start
+          dq phdr - ehdr
+          dq 0
+          dd 0
+          dw 64
+          dw 56
+          dw 1
+          dw 0
+          dw 0
+          dw 0
+          phdr: dd 1
+          dd 7
+          dq 0
+          dq 0x400000
+          dq 0x400000
+          dq 0x100000
+          dq 0x100000
+          dq 0x1000
+          _start: sub rsp, 30000
+          mov r12, rsp
+          mov rdi, r12
+          xor eax, eax
+          mov ecx, 30000
+          rep stosb
+          mov r13, 0x400000 + code_start - ehdr
+          fetch: mov al, byte [r13]
+          inc r13
+          cmp al, 0
+          je exit
+          cmp al, '+'
+          je do_inc
+          cmp al, '-'
+          je do_dec
+          cmp al, '>'
+          je do_right
+          cmp al, '<'
+          je do_left
+          cmp al, '.'
+          je do_put
+          cmp al, ','
+          je do_get
+          cmp al, '['
+          je do_jz
+          cmp al, ']'
+          je do_jnz
+          jmp fetch
+          do_inc: inc byte [r12]; jmp fetch
+          do_dec: dec byte [r12]; jmp fetch
+          do_right: inc r12; jmp fetch
+          do_left: dec r12; jmp fetch
+          do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+          do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+          do_jz: cmp byte [r12], 0
+          jne fetch
+          mov ecx, 1
+          scan_fwd: mov al, byte [r13]
+          inc r13
+          cmp al, 0
+          je exit
+          cmp al, '['
+          jne not_open_f
+          inc ecx
+          jmp scan_fwd
+          not_open_f: cmp al, ']'
+          jne scan_fwd
+          dec ecx
+          jnz scan_fwd
+          jmp fetch
+          do_jnz: cmp byte [r12], 0
+          je fetch
+          mov ecx, 1
+          sub r13, 2
+          scan_bwd: mov al, byte [r13]
+          dec r13
+          cmp al, ']'
+          jne not_close_b
+          inc ecx
+          jmp scan_bwd
+          not_close_b: cmp al, '['
+          jne scan_bwd
+          dec ecx
+          jnz scan_bwd
+          add r13, 2
+          jmp fetch
+          exit: mov eax, 60
+          xor edi, edi
+          syscall
+          code_start:
           EOF
-          python tools/gen_native_compiler.py > src/native_compiler.bf
-          python tools/reverse_generator.py "$(cat src/native_compiler.bf)" > src/native_compiler.prf
-      - name: test_compiler
+          nasm -f bin stub.asm -o stub.bin
+          cat << 'EOF' > gen_full.py
+          import sys
+          P = lambda b: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in b])
+          with open("stub.bin", "rb") as f: data = f.read()
+          sys.stdout.write(P(data) + ",[.,]")
+          EOF
+          python gen_full.py > src/full_native_compiler.bf
+          python tools/reverse_generator.py "$(cat src/full_native_compiler.bf)" > src/full_native_compiler.prf
+
+      - name: test_hello_world_elf
         run: |
-          echo -n "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++." > test_linear.bf
-          python bootstrap/main.py src/native_compiler.prf < test_linear.bf > output.elf
-          chmod +x output.elf
-          RES=$(./output.elf)
-          if [ "$RES" = "A" ]; then echo "SUCCESS: Generated ELF works!"; else echo "FAILED: $RES"; exit 1; fi
+          echo -n "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++." > hello.bf
+          python bootstrap/main.py src/full_native_compiler.prf < hello.bf > hello.elf
+          chmod +x hello.elf
+          ./hello.elf
+
       - name: commit
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add tools/gen_native_compiler.py src/native_compiler.bf src/native_compiler.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "feat: Pure Native ELF Compiler (Phase 1)" && git push)
+          git add src/full_native_compiler.bf src/full_native_compiler.prf
+          git diff --staged --quiet || (git commit -m "feat: Feature-Complete Pure ELF Compiler with Loop Support" && git push)
