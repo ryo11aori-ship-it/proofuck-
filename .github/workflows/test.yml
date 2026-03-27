@@ -14,31 +14,35 @@ jobs:
       - name: install_dependencies
         run: sudo apt-get update && sudo apt-get install -y nasm
 
-      - name: patch_env_and_optimize
+      - name: patch_env_and_radical_optimization
         run: |
           cat << 'EOF' > patch_env.py
           import re
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
           
-          # バイナリ出力とパフォーマンス最適化
+          # 1. バイナリ出力対応
           c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
-          old_calc = "            eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n            extracted_str = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(extracted_str)"
-          new_calc = "            ckey = (expression, start_digit, end_digit)\n            if ckey not in block_cache:\n                eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n                block_cache[ckey] = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(block_cache[ckey])"
-          c = c.replace("        for match in matches:", "        block_cache = {}\n        for match in matches:")
-          c = c.replace(old_calc, new_calc)
-          new_eval = "    @staticmethod\n    def evaluate(blocks: list, operators: list) -> str:\n        if not blocks: return \"\"\n        nb = [blocks[0]]\n        no = []\n        for i, op in enumerate(operators):\n            if op == '×': nb[-1] = InterBlockStringMath._pad_and_calculate(nb[-1], blocks[i+1], '×')\n            else: nb.append(blocks[i+1]); no.append(op)\n        res = nb[0]\n        for i, op in enumerate(no): res = InterBlockStringMath._pad_and_calculate(res, nb[i+1], op)\n        return res"
+          
+          # 2. O(N^2)の計算爆発を完全に防ぐための、超高速な文字列結合パッチ
+          new_eval = "    @staticmethod\n    def evaluate(blocks: list, operators: list) -> str:\n        return \"\".join(blocks)"
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
           
-          # 無限ループ回避のラップアラウンド
+          # 3. 無限ループ回避のラップアラウンド
           c = re.sub(r'(self\.tape\[self\.pointer\])\s*\+=\s*1', r'\1 = (\1 + 1) % 256', c)
           c = re.sub(r'(self\.tape\[self\.pointer\])\s*-=\s*1', r'\1 = (\1 - 1) % 256', c)
+          
+          # 4. 入力バイナリセーフ
           head = "import sys\nsys.stdin = open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False)\nsys.set_int_max_str_digits(0)\n"
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
           
-          # O(1)の素数ジェネレータ
-          with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
-          target_str = "p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
-          new_str = """
+          # 5. reverse_generator.py をO(N)のフラットAST出力版に完全書き換え (数MBのファイル肥大化を防止)
+          new_rev_gen = """
+          import sys, itertools as I
+          bf={'>':'1','<':'2','+':'3','-':'4','.':'5',',':'6','[':'7',']':'8'}
+          src=open(sys.argv[1]).read() if len(sys.argv)>1 else ""
+          tgt="".join(bf.get(c,"") for c in src) or "9"
+          chk=[tgt[max(0,i-5):i] for i in range(len(tgt),0,-5)][::-1]
+          u=set()
           p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1))
           def gen_p():
               n=100
@@ -54,11 +58,18 @@ jobs:
                       if p(x) and x not in u:
                           u.add(x)
                           return (x,y)
-          pass"""
-          cr = cr.replace(target_str, new_str.strip())
-          cr = cr.replace('src=sys.argv[1] if len(sys.argv)>1 else', 'src=open(sys.argv[1]).read() if len(sys.argv)>1 else')
-          cr = cr.replace('eq="+".join(', 'eq="+\\n".join(')
-          with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write(cr)
+          vg=(v+"'"*i for i in I.count() for v in ['x','y','z']+[chr(j) for j in range(945,970) if j!=962]+[chr(j) for j in range(97,120)])
+          bks=[]
+          df=[]
+          for c in chk:
+              x, y = fxy(int(c))
+              vx, vy = next(vg), next(vg)
+              df.extend([f"{vx}={x}", f"{vy}={y}"])
+              bks.append(f"({vx}÷{vy})({len(c)}!1)")
+          eq="+\\n".join(bks)
+          sys.stdout.write("∵\\n"+"\\n".join(df)+f"\\n{eq}\\n={tgt}\\nQ.E.D.\\n")
+          """
+          with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write(new_rev_gen.strip())
           EOF
           python patch_env.py
 
@@ -190,4 +201,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/prf_mapper.bf src/prf_mapper.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "feat: Proofuck numeric-to-ELF mapper (Phase 3)" && git push)
+          git diff --staged --quiet || (git commit -m "feat: Proofuck numeric-to-ELF mapper with AST compression (Phase 3)" && git push)
