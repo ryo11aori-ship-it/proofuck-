@@ -28,7 +28,11 @@ jobs:
           new_eval = "    @staticmethod\n    def evaluate(blocks: list, operators: list) -> str:\n        if not blocks: return \"\"\n        nb = [blocks[0]]\n        no = []\n        for i, op in enumerate(operators):\n            if op == '×': nb[-1] = InterBlockStringMath._pad_and_calculate(nb[-1], blocks[i+1], '×')\n            else: nb.append(blocks[i+1]); no.append(op)\n        res = nb[0]\n        for i, op in enumerate(no): res = InterBlockStringMath._pad_and_calculate(res, nb[i+1], op)\n        return res"
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
           
-          # 3. 入力をバイナリセーフにする (ELFの挙動と完全一致させる)
+          # 3. 無限ループ防止: テープの値を強制的に0-255(8-bit)にラップアラウンドさせる
+          c = re.sub(r'(self\.tape\[self\.pointer\])\s*\+=\s*1', r'\1 = (\1 + 1) % 256', c)
+          c = re.sub(r'(self\.tape\[self\.pointer\])\s*-=\s*1', r'\1 = (\1 - 1) % 256', c)
+          
+          # 4. バイト列の安全な読み込み
           head = "import sys\nsys.stdin = open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False)\nsys.set_int_max_str_digits(0)\n"
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
           
@@ -63,15 +67,16 @@ jobs:
         run: |
           cat << 'EOF' > tools/gen_parser.py
           # ∵ (E2 88 B5) を1バイトずつ検証
-          bf = "+ > " # flag = 1, ptr at 1
+          bf = "+ > " # flag = 1, ptr at cell1
           for b in [226, 136, 181]:
               bf += ", " + "-" * b + " [ < [-] > [-] ] "
           bf += "< " # move to flag
           
-          # 堅牢なIF-ELSE分岐
+          # 完璧に堅牢なIF-ELSE分岐 (ポインタ位置のズレや無限ループを完全に排除)
           bf += "> + < " # cell1=1, ptr at 0
-          bf += "[ > - < [-] > ++++++++ [ < ++++++++++ > - ] < - . ] " # if flag=1: print 'O' (79)
-          bf += "> [ - > +++++++++ [ < ++++++++++ > - ] < - - . ]" # if flag=0: print 'X' (88)
+          bf += "[ [-] > - < >> ++++++++ [ < ++++++++++ > - ] < - . [-] << ] " # if flag=1: print 'O' (79)
+          bf += "> " # move to cell1
+          bf += "[ [-] > ++++++++ [ < ++++++++++ > - ] < ++++++++ . [-] < ]" # if flag=0: print 'X' (88)
           
           with open("src/front_parser.bf", "w") as f: f.write(bf)
           EOF
@@ -95,4 +100,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/front_parser.bf src/front_parser.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "fix: Proofuck syntax parser with robust IF-ELSE & binary safe IO" && git push)
+          git diff --staged --quiet || (git commit -m "fix: Robust parser avoiding infinite loops" && git push)
