@@ -17,10 +17,8 @@ jobs:
           import re
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
           
-          # 1. バイナリ出力対応
+          # バイナリ出力とパフォーマンス最適化の適用
           c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
-          
-          # 2. パフォーマンス最適化
           old_calc = "            eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n            extracted_str = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(extracted_str)"
           new_calc = "            ckey = (expression, start_digit, end_digit)\n            if ckey not in block_cache:\n                eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n                block_cache[ckey] = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(block_cache[ckey])"
           c = c.replace("        for match in matches:", "        block_cache = {}\n        for match in matches:")
@@ -28,15 +26,13 @@ jobs:
           new_eval = "    @staticmethod\n    def evaluate(blocks: list, operators: list) -> str:\n        if not blocks: return \"\"\n        nb = [blocks[0]]\n        no = []\n        for i, op in enumerate(operators):\n            if op == '×': nb[-1] = InterBlockStringMath._pad_and_calculate(nb[-1], blocks[i+1], '×')\n            else: nb.append(blocks[i+1]); no.append(op)\n        res = nb[0]\n        for i, op in enumerate(no): res = InterBlockStringMath._pad_and_calculate(res, nb[i+1], op)\n        return res"
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
           
-          # 3. 無限ループ防止: テープの値を強制的に0-255(8-bit)にラップアラウンドさせる
+          # 無限ループ回避のラップアラウンド
           c = re.sub(r'(self\.tape\[self\.pointer\])\s*\+=\s*1', r'\1 = (\1 + 1) % 256', c)
           c = re.sub(r'(self\.tape\[self\.pointer\])\s*-=\s*1', r'\1 = (\1 - 1) % 256', c)
-          
-          # 4. バイト列の安全な読み込み
           head = "import sys\nsys.stdin = open(sys.stdin.fileno(), 'r', encoding='latin1', closefd=False)\nsys.set_int_max_str_digits(0)\n"
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write(head + c)
           
-          # 素数ジェネレータの高速化
+          # O(1)の素数ジェネレータ
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
           target_str = "p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
           new_str = """
@@ -63,33 +59,47 @@ jobs:
           EOF
           python patch_env.py
 
-      - name: build_lightweight_parser
+      - name: build_dynamic_variable_parser
         run: |
           cat << 'EOF' > tools/gen_parser.py
-          # ∵ (E2 88 B5) を1バイトずつ検証
-          bf = "+ > " # flag = 1, ptr at cell1
-          for b in [226, 136, 181]:
-              bf += ", " + "-" * b + " [ < [-] > [-] ] "
-          bf += "< " # move to flag
+          # メモリマップ: [0: input] [1: is_zero] [2: accumulator] [3: temp] [4: is_zero_flag] [5: print_X_flag]
+          bf = ""
           
-          # 完璧に堅牢なIF-ELSE分岐 (ポインタ位置のズレや無限ループを完全に排除)
-          bf += "> + < " # cell1=1, ptr at 0
-          bf += "[ [-] > - < >> ++++++++ [ < ++++++++++ > - ] < - . [-] << ] " # if flag=1: print 'O' (79)
-          bf += "> " # move to cell1
-          bf += "[ [-] > ++++++++ [ < ++++++++++ > - ] < ++++++++ . [-] < ]" # if flag=0: print 'X' (88)
+          # 1. 'x' と '=' を読み飛ばす
+          bf += ", [-] , [-] "
+          
+          # 2. 数字の読み込みループ (改行が来るまで)
+          bf += ", ---------- " # 改行(10)なら0になる
+          bf += "[ "
+          bf +=   "++++++++++ " # 改行でなければ10を復元
+          bf +=   "-" * 48 + " " # ASCII文字から数値に変換
+          bf +=   ">> [ > ++++++++++ < - ] > [ < + > - ] < " # accumulator(2) を 10倍する
+          bf +=   "<< [ >> + << - ] " # 変換した数値をaccumulatorに足す
+          bf +=   ", ---------- " # 次の文字へ
+          bf += "] "
+          
+          # 3. 値の検証 (accumulator が完全に「11」になっているか？)
+          bf += ">> ----------- " # accumulatorから11を引く
+          bf += ">> + > [-] <<< " # フラグの初期設定 (4=1, 5=0)
+          bf += "[ >> - > + <<< [-] ] " # もし結果が0でなければ (4=0, 5=1)に反転
+          
+          # 4. 出力 (O or X)
+          bf += ">> [ [-] > ++++++++ [ < ++++++++++ > - ] < - . [-] < ] " # フラグ4が1なら 'O' を出力
+          bf += "> [ [-] > ++++++++ [ < ++++++++++ > - ] < ++++++++ . [-] < ] " # フラグ5が1なら 'X' を出力
           
           with open("src/front_parser.bf", "w") as f: f.write(bf)
           EOF
           python tools/gen_parser.py
           python tools/reverse_generator.py src/front_parser.bf > src/front_parser.prf
 
-      - name: test_proofuck_syntax_parser
+      - name: test_proofuck_variable_parser
         run: |
-          echo -n "∵" > test_syntax.txt
+          # 'echo' は末尾に改行(\n)を自動付与するため、「x=11\n」として入力される
+          echo "x=11" > test_syntax.txt
           python bootstrap/main.py src/front_parser.prf < test_syntax.txt > parser_out.txt
           RES=$(cat parser_out.txt)
           if [ "$RES" = "O" ]; then 
-            echo "SUCCESS: Parsed '∵' correctly natively on Proofuck!"
+            echo "SUCCESS: Parsed 'x=11' dynamically and stored 11!"
           else 
             echo "FAILED: $RES"
             exit 1
@@ -100,4 +110,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/front_parser.bf src/front_parser.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "fix: Robust parser avoiding infinite loops" && git push)
+          git diff --staged --quiet || (git commit -m "feat: Dynamic variable parsing & validation (Phase 2.5)" && git push)
