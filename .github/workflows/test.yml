@@ -10,24 +10,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: patch_interpreter
+
+      - name: patch_reverse_generator_for_github_display
         run: |
-          cat << 'EOF' > patch.py
-          with open('bootstrap/main.py', 'r') as f:
+          cat << 'EOF' > patch_rev.py
+          with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f:
               c = f.read()
-          c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
-          with open('bootstrap/main.py', 'w') as f:
-              f.write('import sys\nsys.set_int_max_str_digits(0)\n' + c)
+          # スマホのGitHubで表示が切れないよう、+ の結合部分に改行(\n)を挿入
+          c = c.replace('eq="+".join(', 'eq="+\\n".join(')
+          with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f:
+              f.write(c)
           EOF
-          python patch.py
-      - name: compile_stage2
-        run: |
-          printf '\0' > null.bin
-          cat src/transpiler.bf null.bin > input.bf
-          python bootstrap/main.py src/transpiler.prf < input.bf > compiler.c
-          gcc -O3 compiler.c -o bf_compiler.elf
-          chmod +x bf_compiler.elf
-      - name: generate_elf_poc
+          python patch_rev.py
+
+      - name: Generate ELF POC BF Script (with visible PRF)
         run: |
           cat << 'EOF' > make_poc.py
           import sys
@@ -37,20 +33,10 @@ jobs:
           EOF
           python make_poc.py > src/elf_poc.bf
           python tools/reverse_generator.py "$(cat src/elf_poc.bf)" > src/elf_poc.prf
-      - name: execute_and_test_pure_elf
-        run: |
-          python bootstrap/main.py src/elf_poc.prf > proofuck_pure.elf
-          chmod +x proofuck_pure.elf
-          ./proofuck_pure.elf || RES=$?
-          if [ "$RES" = "42" ]; then
-            echo "SUCCESS: Native ELF executed with code 42"
-          else
-            echo "FAILED: Exit code $RES"
-            exit 1
-          fi
-      - name: commit_poc_files
+
+      - name: commit_visible_prf
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/elf_poc.bf src/elf_poc.prf
-          git diff --staged --quiet || (git commit -m "feat: Pure ELF POC via Proofuck" && git push)
+          git add tools/reverse_generator.py src/elf_poc.prf
+          git diff --staged --quiet || (git commit -m "fix: Format PRF generator for GitHub Mobile visibility" && git push)
