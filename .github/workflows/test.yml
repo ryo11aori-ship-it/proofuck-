@@ -11,13 +11,16 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: install_dependencies
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
       - name: patch_env_and_optimize
         run: |
           cat << 'EOF' > patch_env.py
           import re
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
           
-          # バイナリ出力とパフォーマンス最適化の適用
+          # バイナリ出力とパフォーマンス最適化
           c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
           old_calc = "            eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n            extracted_str = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(extracted_str)"
           new_calc = "            ckey = (expression, start_digit, end_digit)\n            if ckey not in block_cache:\n                eval_val = IntraBlockEvaluator.evaluate(expression, self.var_manager.var_map)\n                block_cache[ckey] = DecimalExtractor.extract(eval_val, start_digit, end_digit)\n            blocks_results.append(block_cache[ckey])"
@@ -59,47 +62,124 @@ jobs:
           EOF
           python patch_env.py
 
-      - name: build_dynamic_variable_parser
+      - name: build_proofuck_elf_mapper
         run: |
-          cat << 'EOF' > tools/gen_parser.py
-          # メモリマップ: [0: input] [1: is_zero] [2: accumulator] [3: temp] [4: is_zero_flag] [5: print_X_flag]
-          bf = ""
-          
-          # 1. 'x' と '=' を読み飛ばす
-          bf += ", [-] , [-] "
-          
-          # 2. 数字の読み込みループ (改行が来るまで)
-          bf += ", ---------- " # 改行(10)なら0になる
-          bf += "[ "
-          bf +=   "++++++++++ " # 改行でなければ10を復元
-          bf +=   "-" * 48 + " " # ASCII文字から数値に変換
-          bf +=   ">> [ > ++++++++++ < - ] > [ < + > - ] < " # accumulator(2) を 10倍する
-          bf +=   "<< [ >> + << - ] " # 変換した数値をaccumulatorに足す
-          bf +=   ", ---------- " # 次の文字へ
-          bf += "] "
-          
-          # 3. 値の検証 (accumulator が完全に「11」になっているか？)
-          bf += ">> ----------- " # accumulatorから11を引く
-          bf += ">> + > [-] <<< " # フラグの初期設定 (4=1, 5=0)
-          bf += "[ >> - > + <<< [-] ] " # もし結果が0でなければ (4=0, 5=1)に反転
-          
-          # 4. 出力 (O or X)
-          bf += ">> [ [-] > ++++++++ [ < ++++++++++ > - ] < - . [-] < ] " # フラグ4が1なら 'O' を出力
-          bf += "> [ [-] > ++++++++ [ < ++++++++++ > - ] < ++++++++ . [-] < ] " # フラグ5が1なら 'X' を出力
-          
-          with open("src/front_parser.bf", "w") as f: f.write(bf)
+          cat << 'EOF' > stub.asm
+          BITS 64
+          ORG 0x400000
+          ehdr: db 0x7F, "ELF", 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          dw 2, 0x3E
+          dd 1
+          dq _start
+          dq phdr - ehdr
+          dq 0
+          dd 0
+          dw 64
+          dw 56
+          dw 1
+          dw 0
+          dw 0
+          dw 0
+          phdr: dd 1
+          dd 7
+          dq 0
+          dq 0x400000
+          dq 0x400000
+          dq 0x100000
+          dq 0x100000
+          dq 0x1000
+          _start: sub rsp, 30000
+          mov r12, rsp
+          mov rdi, r12
+          xor eax, eax
+          mov ecx, 30000
+          rep stosb
+          mov r13, 0x400000 + code_start - ehdr
+          fetch: mov al, byte [r13]
+          inc r13
+          cmp al, 0
+          je exit
+          cmp al, '3'
+          je do_inc
+          cmp al, '4'
+          je do_dec
+          cmp al, '1'
+          je do_right
+          cmp al, '2'
+          je do_left
+          cmp al, '5'
+          je do_put
+          cmp al, '6'
+          je do_get
+          cmp al, '7'
+          je do_jz
+          cmp al, '8'
+          je do_jnz
+          jmp fetch
+          do_inc: inc byte [r12]; jmp fetch
+          do_dec: dec byte [r12]; jmp fetch
+          do_right: inc r12; jmp fetch
+          do_left: dec r12; jmp fetch
+          do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+          do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+          do_jz: cmp byte [r12], 0
+          jne fetch
+          mov ecx, 1
+          scan_fwd: mov al, byte [r13]
+          inc r13
+          cmp al, 0
+          je exit
+          cmp al, '7'
+          jne not_open_f
+          inc ecx
+          jmp scan_fwd
+          not_open_f: cmp al, '8'
+          jne scan_fwd
+          dec ecx
+          jnz scan_fwd
+          jmp fetch
+          do_jnz: cmp byte [r12], 0
+          je fetch
+          mov ecx, 1
+          sub r13, 2
+          scan_bwd: mov al, byte [r13]
+          dec r13
+          cmp al, '8'
+          jne not_close_b
+          inc ecx
+          jmp scan_bwd
+          not_close_b: cmp al, '7'
+          jne scan_bwd
+          dec ecx
+          jnz scan_bwd
+          add r13, 2
+          jmp fetch
+          exit: mov eax, 60
+          xor edi, edi
+          syscall
+          code_start:
           EOF
-          python tools/gen_parser.py
-          python tools/reverse_generator.py src/front_parser.bf > src/front_parser.prf
+          nasm -f bin stub.asm -o stub.bin
+          
+          cat << 'EOF' > tools/gen_mapper.py
+          import sys
+          P = lambda b: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in b])
+          with open("stub.bin", "rb") as f: data = f.read()
+          # ELFヘッダとVMスタブを出力し、その後に入力（数字）をそのまま結合
+          sys.stdout.write(P(data) + ",[.,]")
+          EOF
+          python tools/gen_mapper.py > src/prf_mapper.bf
+          python tools/reverse_generator.py src/prf_mapper.bf > src/prf_mapper.prf
 
-      - name: test_proofuck_variable_parser
+      - name: test_proofuck_numeric_elf
         run: |
-          # 'echo' は末尾に改行(\n)を自動付与するため、「x=11\n」として入力される
-          echo "x=11" > test_syntax.txt
-          python bootstrap/main.py src/front_parser.prf < test_syntax.txt > parser_out.txt
-          RES=$(cat parser_out.txt)
-          if [ "$RES" = "O" ]; then 
-            echo "SUCCESS: Parsed 'x=11' dynamically and stored 11!"
+          # テスト: 65回の '3' (インクリメント:+) と 1回の '5' (出力:.) で 'A' を表示させる
+          python -c "print('3'*65 + '5', end='')" > test_numeric.txt
+          python bootstrap/main.py src/prf_mapper.prf < test_numeric.txt > test_numeric.elf
+          chmod +x test_numeric.elf
+          RES=$(./test_numeric.elf)
+          if [ "$RES" = "A" ]; then 
+            echo "SUCCESS: Proofuck numeric spec successfully compiled to Native ELF!"
           else 
             echo "FAILED: $RES"
             exit 1
@@ -109,5 +189,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/front_parser.bf src/front_parser.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "feat: Dynamic variable parsing & validation (Phase 2.5)" && git push)
+          git add src/prf_mapper.bf src/prf_mapper.prf tools/reverse_generator.py
+          git diff --staged --quiet || (git commit -m "feat: Proofuck numeric-to-ELF mapper (Phase 3)" && git push)
