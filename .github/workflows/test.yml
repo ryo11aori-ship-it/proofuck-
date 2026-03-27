@@ -27,22 +27,23 @@ jobs:
           new_eval = "    @staticmethod\n    def evaluate(blocks: list, operators: list) -> str:\n        if not blocks: return \"\"\n        nb = [blocks[0]]\n        no = []\n        for i, op in enumerate(operators):\n            if op == '×': nb[-1] = InterBlockStringMath._pad_and_calculate(nb[-1], blocks[i+1], '×')\n            else: nb.append(blocks[i+1]); no.append(op)\n        res = nb[0]\n        for i, op in enumerate(no): res = InterBlockStringMath._pad_and_calculate(res, nb[i+1], op)\n        return res"
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write('import sys\nsys.set_int_max_str_digits(0)\n' + c)
+          
+          # reverse_generator.py が直接ファイルを読み込むようにパッチを当てる
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
           cr = cr.replace('eq="+".join(', 'eq="+\\n".join(')
+          cr = cr.replace('src=sys.argv[1] if len(sys.argv)>1 else', 'src=open(sys.argv[1]).read() if len(sys.argv)>1 else')
           with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write(cr)
           EOF
           python patch_env.py
 
       - name: setup_elvm_and_build_c_parser
         run: |
-          # ELVMの導入(--recursiveで8ccのソースも取得)
           git clone --recursive https://github.com/shinh/elvm.git
           cd elvm
           make out/8cc
           make out/elc
           cd ..
           
-          # 超小型のC言語パーサー (入力が 'A' なら '42' を返す)
           cat << 'EOF' > parser.c
           int putchar(int c);
           int getchar(void);
@@ -58,10 +59,11 @@ jobs:
           }
           EOF
           
-          # C -> アセンブリ(EIR) -> Brainfuck -> Proofuck の変換チェーン
           elvm/out/8cc -S parser.c
           elvm/out/elc -bf parser.s > src/front_parser.bf
-          python tools/reverse_generator.py "$(cat src/front_parser.bf)" > src/front_parser.prf
+          
+          # 引数として文字列ではなく「ファイルパス」を渡す
+          python tools/reverse_generator.py src/front_parser.bf > src/front_parser.prf
 
       - name: test_c_parser_on_proofuck
         run: |
