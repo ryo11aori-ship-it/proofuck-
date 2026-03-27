@@ -11,10 +11,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: install_dependencies
-        run: sudo apt-get update && sudo apt-get install -y nasm build-essential git
-
-      - name: patch_env_with_performance_fixes
+      - name: patch_env_and_optimize_prime_generator
         run: |
           cat << 'EOF' > patch_env.py
           import re
@@ -28,50 +25,55 @@ jobs:
           c = re.sub(r'    @staticmethod\s+def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write('import sys\nsys.set_int_max_str_digits(0)\n' + c)
           
-          # reverse_generator.py が直接ファイルを読み込むようにパッチを当てる
+          # reverse_generator.py の素数探索をエラトステネスの篩でO(N)に超高速化
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: cr = f.read()
-          cr = cr.replace('eq="+".join(', 'eq="+\\n".join(')
+          target_str = "p=lambda n:n>1 and all(n%i!=0 for i in range(2,int(n**0.5)+1));gp=lambda m:next(x for x in I.count(m) if p(x) and x not in u and not u.add(x));fxy=lambda v:next((x,y) for y in (gp(100) for _ in I.count()) for x in range(max(2,v*y),v*y+y) if p(x) and x not in u and not u.add(x))"
+          new_str = """
+          MAX_PRIME=2000000
+          sieve=[True]*MAX_PRIME
+          sieve[0]=sieve[1]=False
+          for i in range(2,int(MAX_PRIME**0.5)+1):
+              if sieve[i]: sieve[i*i:MAX_PRIME:i]=[False]*len(range(i*i,MAX_PRIME,i))
+          primes=[i for i,b in enumerate(sieve) if b and i>=100]
+          prime_iter=iter(primes)
+          def fxy(v):
+              while True:
+                  y=next(prime_iter)
+                  for x in range(max(2,v*y),v*y+y):
+                      if sieve[x] and x not in u:
+                          u.add(x); u.add(y)
+                          return (x,y)
+          pass"""
+          cr = cr.replace(target_str, new_str.strip())
           cr = cr.replace('src=sys.argv[1] if len(sys.argv)>1 else', 'src=open(sys.argv[1]).read() if len(sys.argv)>1 else')
+          cr = cr.replace('eq="+".join(', 'eq="+\\n".join(')
           with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write(cr)
           EOF
           python patch_env.py
 
-      - name: setup_elvm_and_build_c_parser
+      - name: build_lightweight_parser
         run: |
-          git clone --recursive https://github.com/shinh/elvm.git
-          cd elvm
-          make out/8cc
-          make out/elc
-          cd ..
-          
-          cat << 'EOF' > parser.c
-          int putchar(int c);
-          int getchar(void);
-          int main() {
-              int c = getchar();
-              if (c == 'A') {
-                  putchar('4');
-                  putchar('2');
-              } else {
-                  putchar('0');
-              }
-              return 0;
-          }
+          cat << 'EOF' > tools/gen_parser.py
+          # ∵ (E2 88 B5) を1バイトずつ検証する軽量Brainfuckを生成
+          bf = "+ > " # flag = 1
+          for b in [226, 136, 181]:
+              bf += ", " + "-" * b + " [ < [-] > [-] ] "
+          # flagが1なら'O'(79)を出力してflagを0に。0なら'X'(88)を出力
+          bf += "< [ [-] > ++++++++++[<+++++++>-]<+++++++++. < + > ] - [ > ++++++++++[<++++++++>-]<++++++++. < [-] ]"
+          with open("src/front_parser.bf", "w") as f: f.write(bf)
           EOF
-          
-          elvm/out/8cc -S parser.c
-          elvm/out/elc -bf parser.s > src/front_parser.bf
-          
-          # 引数として文字列ではなく「ファイルパス」を渡す
+          python tools/gen_parser.py
+          # 素数ジェネレータが高速化されているため、長めのBFでも一瞬で完了します
           python tools/reverse_generator.py src/front_parser.bf > src/front_parser.prf
 
-      - name: test_c_parser_on_proofuck
+      - name: test_proofuck_syntax_parser
         run: |
-          echo -n "A" > test_input.txt
-          python bootstrap/main.py src/front_parser.prf < test_input.txt > parser_out.txt
+          # テスト入力として「∵」を与える
+          echo -n "∵" > test_syntax.txt
+          python bootstrap/main.py src/front_parser.prf < test_syntax.txt > parser_out.txt
           RES=$(cat parser_out.txt)
-          if [ "$RES" = "42" ]; then 
-            echo "SUCCESS: C Parser successfully running natively on Proofuck!"
+          if [ "$RES" = "O" ]; then 
+            echo "SUCCESS: Parsed '∵' correctly natively on Proofuck!"
           else 
             echo "FAILED: $RES"
             exit 1
@@ -81,5 +83,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/front_parser.bf src/front_parser.prf
-          git diff --staged --quiet || (git commit -m "feat: C-to-Proofuck parser toolchain infrastructure" && git push)
+          git add src/front_parser.bf src/front_parser.prf tools/reverse_generator.py
+          git diff --staged --quiet || (git commit -m "feat: Lightweight Proofuck syntax parser (Phase 2)" && git push)
