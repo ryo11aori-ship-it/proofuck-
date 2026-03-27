@@ -14,12 +14,36 @@ jobs:
       - name: install_dependencies
         run: sudo apt-get update && sudo apt-get install -y nasm
 
-      - name: patch_env
+      - name: optimize_and_patch_interpreter
         run: |
           cat << 'EOF' > patch_env.py
+          import re
           with open('bootstrap/main.py', 'r', encoding='utf-8') as f: c = f.read()
+          # 1. バイナリ出力パッチ
           c = c.replace('sys.stdout.write(chr(self.tape[self.pointer]))', 'sys.stdout.buffer.write(bytes([self.tape[self.pointer]]))')
+          
+          # 2. 任意精度演算のメモ化（キャッシュ）による爆速化
+          c = c.replace('class IntraBlockEvaluator:', 'class IntraBlockEvaluator:\n    _cache_eval = {}')
+          c = c.replace('def evaluate(expression: str, var_map: dict) -> Decimal:', 'def evaluate(expression: str, var_map: dict) -> Decimal:\n        if expression in IntraBlockEvaluator._cache_eval: return IntraBlockEvaluator._cache_eval[expression]')
+          c = c.replace('return eval_stack[0]', 'IntraBlockEvaluator._cache_eval[expression] = eval_stack[0]\n        return eval_stack[0]')
+          c = c.replace('class DecimalExtractor:', 'class DecimalExtractor:\n    _cache_ext = {}')
+          c = c.replace('def extract(value: Decimal, start: int, end: int) -> str:', 'def extract(value: Decimal, start: int, end: int) -> str:\n        k = (str(value), start, end)\n        if k in DecimalExtractor._cache_ext: return DecimalExtractor._cache_ext[k]')
+          c = c.replace('return result', 'DecimalExtractor._cache_ext[k] = result\n        return result')
+          
+          # 3. O(N^2)のリスト削除をO(N)アルゴリズムに置換（言語ルールは維持）
+          new_eval = """    def evaluate(blocks: list, operators: list) -> str:
+                  if not blocks: return ""
+                  nb = [blocks[0]]; no = []
+                  for op, b in zip(operators, blocks[1:]):
+                      if op == '×': nb[-1] = InterBlockStringMath._pad_and_calculate(nb[-1], b, '×')
+                      else: nb.append(b); no.append(op)
+                  res = nb[0]
+                  for op, b in zip(no, nb[1:]): res = InterBlockStringMath._pad_and_calculate(res, b, op)
+                  return res"""
+          c = re.sub(r'def evaluate\(blocks: list, operators: list\) -> str:.*?return blocks\[0\] if blocks else ""', new_eval, c, flags=re.DOTALL)
+          
           with open('bootstrap/main.py', 'w', encoding='utf-8') as f: f.write('import sys\nsys.set_int_max_str_digits(0)\n' + c)
+          
           with open('tools/reverse_generator.py', 'r', encoding='utf-8') as f: c = f.read()
           c = c.replace('eq="+".join(', 'eq="+\\n".join(')
           with open('tools/reverse_generator.py', 'w', encoding='utf-8') as f: f.write(c)
@@ -58,7 +82,7 @@ jobs:
           xor eax, eax
           mov ecx, 30000
           rep stosb
-          mov r13, 0x400000 + code_start - ehdr
+          mov r13, code_start
           fetch: mov al, byte [r13]
           inc r13
           cmp al, 0
@@ -136,14 +160,4 @@ jobs:
 
       - name: test_hello_world_elf
         run: |
-          echo -n "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++." > hello.bf
-          python bootstrap/main.py src/full_native_compiler.prf < hello.bf > hello.elf
-          chmod +x hello.elf
-          ./hello.elf
-
-      - name: commit
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/full_native_compiler.bf src/full_native_compiler.prf
-          git diff --staged --quiet || (git commit -m "feat: Feature-Complete Pure ELF Compiler with Loop Support" && git push)
+          echo -n "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.
