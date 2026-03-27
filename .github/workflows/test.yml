@@ -12,7 +12,7 @@ jobs:
           python-version: '3.10'
 
       - name: install_dependencies
-        run: sudo apt-get update && sudo apt-get install -y nasm build-essential
+        run: sudo apt-get update && sudo apt-get install -y nasm build-essential git
 
       - name: patch_env_with_performance_fixes
         run: |
@@ -35,15 +35,17 @@ jobs:
 
       - name: setup_elvm_and_build_c_parser
         run: |
-          # ELVM (C to Brainfuck ツールチェーン) の導入
+          # ELVMの導入と必要なモジュール(8cc, elc)の個別ビルド
           git clone https://github.com/shinh/elvm.git
           cd elvm
-          make 8cc elc
+          make -C 8cc
+          make out/elc
           cd ..
           
           # 超小型のC言語パーサー (入力が 'A' なら '42' を返す)
           cat << 'EOF' > parser.c
-          #include <stdio.h>
+          int putchar(int c);
+          int getchar(void);
           int main() {
               int c = getchar();
               if (c == 'A') {
@@ -57,7 +59,7 @@ jobs:
           EOF
           
           # C -> アセンブリ -> Brainfuck -> Proofuck の変換チェーン
-          elvm/out/8cc -S parser.c
+          elvm/8cc/8cc -S parser.c
           elvm/out/elc -bf parser.s > src/front_parser.bf
           python tools/reverse_generator.py "$(cat src/front_parser.bf)" > src/front_parser.prf
 
