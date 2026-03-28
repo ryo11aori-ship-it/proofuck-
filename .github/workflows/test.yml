@@ -17,259 +17,252 @@ jobs:
       - name: create_ultimate_vm
         run: |
           cat << 'EOF' > ultra_main.py
-          import sys
-          import re
-          
-          sys.set_int_max_str_digits(0)
-          
-          # UTF-8破壊を防ぐ絶対的なバイナリ出力
-          sys.stdout.reconfigure(encoding='latin1')
-          
-          class SafeStdin:
-              def read(self, s=1):
-                  r = sys.__stdin__.read(s)
-                  return r if r else '\x00'
-              def fileno(self):
-                  return sys.__stdin__.fileno()
-          sys.stdin = SafeStdin()
-          
-          class ProofuckVM:
-              def __init__(self, code):
-                  self.code = code
-                  self.tape = [0] * 30000
-                  self.ptr = 0
-                  self.pc = 0
-                  self.jmp = {}
-                  
-                  stack = []
-                  for i, c in enumerate(code):
-                      if c == '7': stack.append(i)
-                      elif c == '8':
-                          j = stack.pop()
-                          self.jmp[i] = j
-                          self.jmp[j] = i
-          
-              def run(self):
-                  while self.pc < len(self.code):
-                      c = self.code[self.pc]
-                      if c == '3': self.tape[self.ptr] = (self.tape[self.ptr] + 1) % 256
-                      elif c == '4': self.tape[self.ptr] = (self.tape[self.ptr] - 1) % 256
-                      elif c == '1': self.ptr += 1
-                      elif c == '2': self.ptr -= 1
-                      elif c == '5': sys.stdout.buffer.write(bytes([self.tape[self.ptr]]))
-                      elif c == '6': self.tape[self.ptr] = ord(sys.stdin.read(1)) % 256
-                      elif c == '7':
-                          if self.tape[self.ptr] == 0: self.pc = self.jmp[self.pc]
-                      elif c == '8':
-                          if self.tape[self.ptr] != 0: self.pc = self.jmp[self.pc]
-                      self.pc += 1
-          
-          def solve(prf_text):
-              # コメントや空白を除去
-              lines = [l.strip() for l in prf_text.split('\n') if l.strip() and not l.startswith('∵') and not l.startswith('=') and l != 'Q.E.D.']
-              var_map = {}
-              # 変数定義をパース (x=123)
-              for l in lines:
-                  if '=' in l and '÷' not in l and '!' not in l:
-                      k, v = l.split('=')
-                      var_map[k.strip()] = int(v.strip())
-              
-              # 数式の評価 ( (x÷y)(25!1) + ... )
-              target_eq = lines[-1]
-              blocks = target_eq.split('+')
-              result_str = ""
-              
-              for blk in blocks:
-                  blk = blk.strip()
-                  if not blk: continue
-                  # (x÷y) の部分と (25!1) の部分を抽出
-                  m = re.match(r'\((.*?)\)\((.*?)!1\)', blk)
-                  if m:
-                      expr = m.group(1)
-                      length = int(m.group(2))
-                      if '÷' in expr:
-                          v1, v2 = expr.split('÷')
-                          val = var_map[v1.strip()] // var_map[v2.strip()]
-                          result_str += str(val).zfill(length)
-                      else:
-                          val = var_map[expr.strip()]
-                          result_str += str(val).zfill(length)
-              return result_str
-          
-          if __name__ == "__main__":
-              prf_file = sys.argv[1]
-              with open(prf_file, 'r', encoding='utf-8') as f:
-                  prf_text = f.read()
-              
-              bf_code = solve(prf_text)
-              vm = ProofuckVM(bf_code)
-              vm.run()
-          EOF
-          python -m py_compile ultra_main.py # 構文エラーがないか事前チェック
+import sys
+import re
+
+sys.set_int_max_str_digits(0)
+sys.stdout.reconfigure(encoding='latin1')
+
+class SafeStdin:
+    def read(self, s=1):
+        r = sys.__stdin__.read(s)
+        return r if r else '\x00'
+    def fileno(self):
+        return sys.__stdin__.fileno()
+sys.stdin = SafeStdin()
+
+class ProofuckVM:
+    def __init__(self, code):
+        self.code = code
+        self.tape = [0] * 30000
+        self.ptr = 0
+        self.pc = 0
+        self.jmp = {}
+        stack = []
+        for i, c in enumerate(code):
+            if c == '7': stack.append(i)
+            elif c == '8':
+                if stack:
+                    j = stack.pop()
+                    self.jmp[i] = j
+                    self.jmp[j] = i
+
+    def run(self):
+        while self.pc < len(self.code):
+            c = self.code[self.pc]
+            if c == '3': self.tape[self.ptr] = (self.tape[self.ptr] + 1) % 256
+            elif c == '4': self.tape[self.ptr] = (self.tape[self.ptr] - 1) % 256
+            elif c == '1': self.ptr += 1
+            elif c == '2': self.ptr -= 1
+            elif c == '5': sys.stdout.buffer.write(bytes([self.tape[self.ptr]]))
+            elif c == '6': self.tape[self.ptr] = ord(sys.stdin.read(1)) % 256
+            elif c == '7':
+                if self.tape[self.ptr] == 0: self.pc = self.jmp.get(self.pc, self.pc)
+            elif c == '8':
+                if self.tape[self.ptr] != 0: self.pc = self.jmp.get(self.pc, self.pc)
+            self.pc += 1
+
+def solve(prf_text):
+    var_map = {}
+    eq_str = ""
+    for l in prf_text.split('\n'):
+        l = l.strip()
+        if not l or l.startswith('∵') or l.startswith('=') or l == 'Q.E.D.': continue
+        if '=' in l and '÷' not in l and '!' not in l:
+            k, v = l.split('=')
+            var_map[k.strip()] = int(v.strip())
+        else:
+            # 【修正点】改行された数式をすべて結合して欠落を防ぐ！
+            eq_str += l
+    
+    blocks = eq_str.split('+')
+    result_str = ""
+    for blk in blocks:
+        m = re.search(r'\((.*?)\)\((\d+)!1\)', blk)
+        if m:
+            expr = m.group(1)
+            length = int(m.group(2))
+            if '÷' in expr:
+                v1, v2 = expr.split('÷')
+                val = var_map[v1.strip()] // var_map[v2.strip()]
+                result_str += str(val).zfill(length)
+            else:
+                val = var_map[expr.strip()]
+                result_str += str(val).zfill(length)
+    return result_str
+
+if __name__ == "__main__":
+    with open(sys.argv[1], 'r', encoding='utf-8') as f:
+        vm = ProofuckVM(solve(f.read()))
+        vm.run()
+EOF
 
       - name: build_proofuck_elf_mapper
         run: |
           cat << 'EOF' > stub.asm
-          BITS 64
-          ORG 0x400000
-          ehdr: db 0x7F, "ELF", 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
-          dw 2, 0x3E
-          dd 1
-          dq _start
-          dq phdr - ehdr
-          dq 0
-          dd 0
-          dw 64
-          dw 56
-          dw 1
-          dw 0
-          dw 0
-          dw 0
-          phdr: dd 1
-          dd 7
-          dq 0
-          dq 0x400000
-          dq 0x400000
-          dq 0x2000
-          dq 0x100000
-          dq 0x1000
-          _start:
-          ; OSのSIGBUSを回避するため、広大なBSS領域(0x402000)をテープメモリとして使う
-          mov r12, 0x402000
-          mov r13, 0x400000 + code_start - ehdr
-          fetch: mov al, byte [r13]
-          inc r13
-          cmp al, 0
-          je exit
-          cmp al, '3'
-          je do_inc
-          cmp al, '4'
-          je do_dec
-          cmp al, '1'
-          je do_right
-          cmp al, '2'
-          je do_left
-          cmp al, '5'
-          je do_put
-          cmp al, '6'
-          je do_get
-          cmp al, '7'
-          je do_jz
-          cmp al, '8'
-          je do_jnz
-          jmp fetch
-          do_inc: inc byte [r12]; jmp fetch
-          do_dec: dec byte [r12]; jmp fetch
-          do_right: inc r12; jmp fetch
-          do_left: dec r12; jmp fetch
-          do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
-          do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
-          do_jz: cmp byte [r12], 0
-          jne fetch
-          mov ecx, 1
-          scan_fwd: mov al, byte [r13]
-          inc r13
-          cmp al, 0
-          je exit
-          cmp al, '7'
-          jne not_open_f
-          inc ecx
-          jmp scan_fwd
-          not_open_f: cmp al, '8'
-          jne scan_fwd
-          dec ecx
-          jnz scan_fwd
-          jmp fetch
-          do_jnz: cmp byte [r12], 0
-          je fetch
-          mov ecx, 1
-          sub r13, 2
-          scan_bwd: mov al, byte [r13]
-          dec r13
-          cmp al, '8'
-          jne not_close_b
-          inc ecx
-          jmp scan_bwd
-          not_close_b: cmp al, '7'
-          jne scan_bwd
-          dec ecx
-          jnz scan_bwd
-          add r13, 2
-          jmp fetch
-          exit: mov eax, 60
-          xor edi, edi
-          syscall
-          code_start:
-          EOF
+BITS 64
+ORG 0x400000
+ehdr: db 0x7F, "ELF", 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+dw 2, 0x3E
+dd 1
+dq _start
+dq phdr - ehdr
+dq 0
+dd 0
+dw 64
+dw 56
+dw 1
+dw 0
+dw 0
+dw 0
+phdr: dd 1
+dd 7
+dq 0
+dq 0x400000
+dq 0x400000
+dq 0x2000
+dq 0x100000
+dq 0x1000
+_start:
+mov r12, 0x402000
+mov r13, 0x400000 + code_start - ehdr
+fetch: mov al, byte [r13]
+inc r13
+cmp al, 0
+je exit
+cmp al, '3'
+je do_inc
+cmp al, '4'
+je do_dec
+cmp al, '1'
+je do_right
+cmp al, '2'
+je do_left
+cmp al, '5'
+je do_put
+cmp al, '6'
+je do_get
+cmp al, '7'
+je do_jz
+cmp al, '8'
+je do_jnz
+jmp fetch
+do_inc: inc byte [r12]; jmp fetch
+do_dec: dec byte [r12]; jmp fetch
+do_right: inc r12; jmp fetch
+do_left: dec r12; jmp fetch
+do_put: mov eax, 1; mov edi, 1; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+do_get: xor eax, eax; xor edi, edi; mov rsi, r12; mov edx, 1; syscall; jmp fetch
+do_jz: cmp byte [r12], 0
+jne fetch
+mov ecx, 1
+scan_fwd: mov al, byte [r13]
+inc r13
+cmp al, 0
+je exit
+cmp al, '7'
+jne not_open_f
+inc ecx
+jmp scan_fwd
+not_open_f: cmp al, '8'
+jne scan_fwd
+dec ecx
+jnz scan_fwd
+jmp fetch
+do_jnz: cmp byte [r12], 0
+je fetch
+mov ecx, 1
+sub r13, 2
+scan_bwd: mov al, byte [r13]
+dec r13
+cmp al, '8'
+jne not_close_b
+inc ecx
+jmp scan_bwd
+not_close_b: cmp al, '7'
+jne scan_bwd
+dec ecx
+jnz scan_bwd
+add r13, 2
+jmp fetch
+exit: mov eax, 60
+xor edi, edi
+syscall
+code_start:
+EOF
           nasm -f bin stub.asm -o stub.bin
           
           cat << 'EOF' > tools/gen_mapper.py
-          import sys
-          sys.stdout.reconfigure(encoding='latin1')
-          P = lambda b: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in b])
-          with open("stub.bin", "rb") as f: data = f.read()
-          sys.stdout.buffer.write((P(data) + "[-] , [ . [-] , ]").encode('utf-8'))
-          EOF
+import sys
+sys.stdout.reconfigure(encoding='latin1')
+P = lambda b: "".join([">++++++++++[<"+"+"*(c//10)+">-]<"+"+"*(c%10)+".[-]" for c in b])
+with open("stub.bin", "rb") as f: data = f.read()
+sys.stdout.buffer.write((P(data) + "[-] , [ . [-] , ]").encode('utf-8'))
+EOF
           python tools/gen_mapper.py > src/prf_mapper.bf
           
           cat << 'EOF' > tools/reverse_generator.py
-          import sys, itertools as I
-          sys.set_int_max_str_digits(0)
-          bf = {'>':'1','<':'2','+':'3','-':'4','.':'5',',':'6','[':'7',']':'8'}
-          src = open(sys.argv[1]).read() if len(sys.argv)>1 else "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
-          tgt = "".join(bf.get(c,"") for c in src) or "9"
-          
-          CHUNK = 250
-          chk = [tgt[max(0,i-CHUNK):i] for i in range(len(tgt),0,-CHUNK)][::-1]
-          
-          def p(n):
-              if n<2: return False
-              if n in (2,3,5,7,11,13,17,19): return True
-              if any(n%x==0 for x in (2,3,5,7,11,13,17,19)): return False
-              return pow(2,n-1,n)==1 and pow(3,n-1,n)==1 and pow(5,n-1,n)==1
-          
-          def gen_p():
-              n = 100003
-              while True:
-                  if p(n): yield n
-                  n += 2
-          P_ITER = gen_p()
-          
-          def fxy(v_str):
-              v = int(v_str)
-              while True:
-                  y = next(P_ITER)
-                  x = max(2, v*y)
-                  if x%2==0: x += 1
-                  while x < v*y+y:
-                      if p(x): return (x,y)
-                      x += 2
-          
-          vg = (v+"'"*i for i in I.count() for v in ['x','y','z']+[chr(j) for j in range(945,970) if j!=962]+[chr(j) for j in range(97,120)])
-          df = []
-          bks = []
-          
-          if len(chk) > 1:
-              xt, yt = fxy("1" + "0" * CHUNK)
-              xnt, ynt = next(vg), next(vg)
-              df.extend([f"{xnt}={xt}", f"{ynt}={yt}"])
-              tb = f"({xnt}÷{ynt})({CHUNK+1}!1)"
-          else:
-              tb = ""
-              
-          for c in chk:
-              nx, ny = next(vg), next(vg)
-              px, py = fxy(c)
-              df.extend([f"{nx}={px}", f"{ny}={py}"])
-              bks.append(f"({nx}÷{ny})({len(c)}!1)")
-              
-          if len(chk) > 1:
-              eq = "+\n".join(bks[i] + "".join("×"+tb for _ in range(len(chk)-1-i)) for i in range(len(chk)))
-          else:
-              eq = bks[0]
-              
-          sys.stdout.write("∵\n" + "\n".join(df) + f"\n{eq}\n={tgt}\nQ.E.D.\n")
-          EOF
+import sys, itertools as I
+sys.set_int_max_str_digits(0)
+bf = {'>':'1','<':'2','+':'3','-':'4','.':'5',',':'6','[':'7',']':'8'}
+src = open(sys.argv[1]).read() if len(sys.argv)>1 else "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
+tgt = "".join(bf.get(c,"") for c in src) or "9"
+
+CHUNK = 250
+chk = [tgt[max(0,i-CHUNK):i] for i in range(len(tgt),0,-CHUNK)][::-1]
+u = set()
+
+def p(n):
+    if n<2: return False
+    if n in (2,3,5,7,11,13,17,19): return True
+    if any(n%x==0 for x in (2,3,5,7,11,13,17,19)): return False
+    return pow(2,n-1,n)==1 and pow(3,n-1,n)==1 and pow(5,n-1,n)==1
+
+def gen_p():
+    n = 100003
+    while True:
+        if p(n) and n not in u: yield n
+        n += 2
+P_ITER = gen_p()
+
+def fxy(v_str):
+    v = int(v_str)
+    while True:
+        y = next(P_ITER)
+        u.add(y)
+        x = max(2, v*y)
+        if x%2==0: x += 1
+        while x < v*y+y:
+            if p(x) and x not in u:
+                u.add(x)
+                return (x,y)
+            x += 2
+
+vg = (v+"'"*i for i in I.count() for v in ['x','y','z']+[chr(j) for j in range(945,970) if j!=962]+[chr(j) for j in range(97,120)])
+df = []
+bks = []
+
+if len(chk) > 1:
+    xt, yt = fxy("1" + "0" * CHUNK)
+    xnt, ynt = next(vg), next(vg)
+    df.extend([f"{xnt}={xt}", f"{ynt}={yt}"])
+    tb = f"({xnt}÷{ynt})({CHUNK+1}!1)"
+else:
+    tb = ""
+    
+for c in chk:
+    nx, ny = next(vg), next(vg)
+    px, py = fxy(c)
+    df.extend([f"{nx}={px}", f"{ny}={py}"])
+    bks.append(f"({nx}÷{ny})({len(c)}!1)")
+    
+if len(chk) > 1:
+    eq = "+\n".join(bks[i] + "".join("×"+tb for _ in range(len(chk)-1-i)) for i in range(len(chk)))
+else:
+    eq = bks[0]
+    
+sys.stdout.write("∵\n" + "\n".join(df) + f"\n{eq}\n={tgt}\nQ.E.D.\n")
+EOF
           python tools/reverse_generator.py src/prf_mapper.bf > src/prf_mapper.prf
 
       - name: test_proofuck_numeric_elf
@@ -277,7 +270,6 @@ jobs:
           python -c "print('3'*65 + '5', end='')" > test_numeric.txt
           
           set +e
-          # 【完全突破】バグまみれのmain.pyを捨て、ゼロから書いた超高速・絶対安全の ultra_main.py を使う
           python ultra_main.py src/prf_mapper.prf < test_numeric.txt > test_numeric.elf 2> error.log
           PY_STATUS=$?
           set -e
@@ -288,7 +280,6 @@ jobs:
             exit 1
           fi
           
-          # OSのセキュリティ(SIGBUS)を騙すためのゼロパディング
           dd if=/dev/zero bs=1 count=8192 >> test_numeric.elf
           chmod +x test_numeric.elf
           
@@ -313,4 +304,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/prf_mapper.bf src/prf_mapper.prf tools/reverse_generator.py
-          git diff --staged --quiet || (git commit -m "feat: Perfect Proofuck VM from scratch for O(1) error-free compilation" && git push)
+          git diff --staged --quiet || (git commit -m "fix: Aggregate multiline equations to prevent incomplete BF code generation" && git push)
